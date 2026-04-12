@@ -76,6 +76,17 @@ class UserController extends BaseController {
    *     responses:
    *       '200':
    *         description: Updated profile
+   *         content:
+   *           application/json:
+   *             schema:
+   *               type: object
+   *               properties:
+   *                 id: { type: string }
+   *                 name: { type: string }
+   *                 email: { type: string, nullable: true }
+   *                 avatar_url: { type: string, nullable: true }
+   *                 phone: { type: string, nullable: true }
+   *                 created_at: { type: string, format: date-time }
    *       '400':
    *         $ref: '#/components/responses/BadRequest'
    *       '401':
@@ -107,6 +118,16 @@ class UserController extends BaseController {
    *     responses:
    *       '200':
    *         description: User found
+   *         content:
+   *           application/json:
+   *             schema:
+   *               type: object
+   *               properties:
+   *                 id: { type: string }
+   *                 name: { type: string }
+   *                 email: { type: string, nullable: true }
+   *                 avatar_url: { type: string, nullable: true }
+   *                 created_at: { type: string, format: date-time }
    *       '404':
    *         $ref: '#/components/responses/NotFound'
    *       '401':

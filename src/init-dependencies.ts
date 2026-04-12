@@ -15,7 +15,10 @@ import {
 } from '@/modules/webhooks/webhooks.dependencies';
 import { registerInviteDependencies } from '@/modules/invites/invites.dependencies';
 import { registerPoolDependencies } from '@/modules/pools/pools.dependencies';
-import { registerExpenseDependencies } from '@/modules/expenses/expenses.dependencies';
+import {
+  registerExpenseDependencies,
+  startRecurringExpenseScheduler,
+} from '@/modules/expenses/expenses.dependencies';
 import { registerBalanceDependencies } from '@/modules/balances/balances.dependencies';
 import { registerSettlementDependencies } from '@/modules/settlements/settlements.dependencies';
 
@@ -51,6 +54,9 @@ export async function configureContainer(): Promise<void> {
   registerBalanceDependencies();
   // 9. Settlements
   registerSettlementDependencies();
+
+  // Start background schedulers (after all deps are registered)
+  startRecurringExpenseScheduler();
 
   // App
   container.registerSingleton(App);

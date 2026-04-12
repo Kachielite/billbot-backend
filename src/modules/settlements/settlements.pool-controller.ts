@@ -133,6 +133,25 @@ class SettlementPoolController extends BaseController {
    *     responses:
    *       '200':
    *         description: Settlement list with statuses
+   *         content:
+   *           application/json:
+   *             schema:
+   *               type: array
+   *               items:
+   *                 type: object
+   *                 properties:
+   *                   id: { type: string }
+   *                   pool_id: { type: string, nullable: true }
+   *                   from_user: { type: string, nullable: true }
+   *                   to_user: { type: string, nullable: true }
+   *                   amount: { type: string, example: '5000.00' }
+   *                   currency: { type: string, example: NGN }
+   *                   proof_url: { type: string, nullable: true }
+   *                   note: { type: string, nullable: true }
+   *                   status: { type: string, enum: [pending_verification, settled, disputed] }
+   *                   disputed_reason: { type: string, nullable: true }
+   *                   confirmed_at: { type: string, format: date-time, nullable: true }
+   *                   created_at: { type: string, format: date-time }
    *       '403':
    *         $ref: '#/components/responses/Forbidden'
    *       '401':

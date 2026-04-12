@@ -71,9 +71,41 @@ class ExpenseController extends BaseController {
    *               category: { type: string, enum: [rent, school_fees, food, transport, utilities, medical, other] }
    *               currency: { type: string, enum: [NGN, KES, GHS, ZAR], default: NGN }
    *               receipt: { type: string, format: binary }
+   *               isRecurring: { type: boolean, default: false, description: 'Mark this expense as recurring' }
+   *               recurrenceFrequency: { type: string, enum: [daily, weekly, biweekly, monthly, yearly], description: 'Required when isRecurring is true' }
+   *               recurrenceEndDate: { type: string, format: date-time, description: 'Optional ISO date after which no more instances are generated' }
    *     responses:
    *       '201':
    *         description: Expense created with splits
+   *         content:
+   *           application/json:
+   *             schema:
+   *               type: object
+   *               properties:
+   *                 id: { type: string }
+   *                 pool_id: { type: string }
+   *                 paid_by: { type: string, nullable: true }
+   *                 amount: { type: string, example: '3000.00' }
+   *                 currency: { type: string, example: NGN }
+   *                 description: { type: string, nullable: true }
+   *                 category: { type: string, nullable: true }
+   *                 receipt_url: { type: string, nullable: true }
+   *                 created_at: { type: string, format: date-time }
+   *                 is_recurring: { type: boolean }
+   *                 recurrence_frequency: { type: string, nullable: true, enum: [daily, weekly, biweekly, monthly, yearly] }
+   *                 recurrence_end_date: { type: string, format: date-time, nullable: true }
+   *                 next_occurrence_at: { type: string, format: date-time, nullable: true }
+   *                 splits:
+   *                   type: array
+   *                   items:
+   *                     type: object
+   *                     properties:
+   *                       id: { type: string }
+   *                       expense_id: { type: string }
+   *                       owed_by: { type: string, nullable: true }
+   *                       amount: { type: string }
+   *                       settled: { type: boolean }
+   *                       settled_at: { type: string, format: date-time, nullable: true }
    *       '403':
    *         $ref: '#/components/responses/Forbidden'
    *       '401':
@@ -201,6 +233,38 @@ class ExpenseController extends BaseController {
    *     responses:
    *       '200':
    *         description: Paginated expense list
+   *         content:
+   *           application/json:
+   *             schema:
+   *               type: object
+   *               properties:
+   *                 page: { type: integer, example: 1 }
+   *                 limit: { type: integer, example: 20 }
+   *                 total_items: { type: integer }
+   *                 pages: { type: integer }
+   *                 items:
+   *                   type: array
+   *                   items:
+   *                     type: object
+   *                     properties:
+   *                       id: { type: string }
+   *                       pool_id: { type: string }
+   *                       paid_by: { type: string, nullable: true }
+   *                       amount: { type: string }
+   *                       currency: { type: string }
+   *                       description: { type: string, nullable: true }
+   *                       category: { type: string, nullable: true }
+   *                       receipt_url: { type: string, nullable: true }
+   *                       created_at: { type: string, format: date-time }
+   *                       splits:
+   *                         type: array
+   *                         items:
+   *                           type: object
+   *                           properties:
+   *                             id: { type: string }
+   *                             owed_by: { type: string, nullable: true }
+   *                             amount: { type: string }
+   *                             settled: { type: boolean }
    *       '403':
    *         $ref: '#/components/responses/Forbidden'
    *       '401':
@@ -230,6 +294,31 @@ class ExpenseController extends BaseController {
    *     responses:
    *       '200':
    *         description: Expense with splits breakdown
+   *         content:
+   *           application/json:
+   *             schema:
+   *               type: object
+   *               properties:
+   *                 id: { type: string }
+   *                 pool_id: { type: string }
+   *                 paid_by: { type: string, nullable: true }
+   *                 amount: { type: string }
+   *                 currency: { type: string }
+   *                 description: { type: string, nullable: true }
+   *                 category: { type: string, nullable: true }
+   *                 receipt_url: { type: string, nullable: true }
+   *                 created_at: { type: string, format: date-time }
+   *                 splits:
+   *                   type: array
+   *                   items:
+   *                     type: object
+   *                     properties:
+   *                       id: { type: string }
+   *                       expense_id: { type: string }
+   *                       owed_by: { type: string, nullable: true }
+   *                       amount: { type: string }
+   *                       settled: { type: boolean }
+   *                       settled_at: { type: string, format: date-time, nullable: true }
    *       '403':
    *         $ref: '#/components/responses/Forbidden'
    *       '404':
@@ -273,6 +362,52 @@ class ExpenseController extends BaseController {
   async deleteExpense(req: Request) {
     const userId = (req as unknown as IAuthenticatedRequest).user?.id as string;
     return this.expenseService.deleteExpense(req.params['expenseId'] as string, userId);
+  }
+
+  /**
+   * @swagger
+   * /pools/{poolId}/expenses/{expenseId}/recurrence:
+   *   delete:
+   *     tags: [Expenses]
+   *     summary: Cancel a recurring expense
+   *     description: |
+   *       Stops future auto-generation of this expense. The original expense and all
+   *       previously generated instances are kept. Only the payer can cancel.
+   *     security:
+   *       - bearerAuth: []
+   *     parameters:
+   *       - in: path
+   *         name: poolId
+   *         required: true
+   *         schema: { type: string }
+   *       - in: path
+   *         name: expenseId
+   *         required: true
+   *         schema: { type: string }
+   *     responses:
+   *       '200':
+   *         description: Recurring schedule cancelled
+   *         content:
+   *           application/json:
+   *             schema:
+   *               type: object
+   *               properties:
+   *                 success: { type: boolean }
+   *                 message: { type: string }
+   *                 data: { type: object, nullable: true }
+   *       '400':
+   *         $ref: '#/components/responses/BadRequest'
+   *       '403':
+   *         $ref: '#/components/responses/Forbidden'
+   *       '404':
+   *         $ref: '#/components/responses/NotFound'
+   *       '401':
+   *         $ref: '#/components/responses/Unauthorized'
+   */
+  @Delete('/:poolId/expenses/:expenseId/recurrence')
+  async cancelRecurrence(req: Request) {
+    const userId = (req as unknown as IAuthenticatedRequest).user?.id as string;
+    return this.expenseService.cancelRecurrence(req.params['expenseId'] as string, userId);
   }
 }
 

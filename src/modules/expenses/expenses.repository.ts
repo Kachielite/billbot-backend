@@ -1,5 +1,5 @@
 import { inject, injectable } from 'tsyringe';
-import { eq, and } from 'drizzle-orm';
+import { eq, and, lte, gte, or, isNull } from 'drizzle-orm';
 import Database from '@/common/lib/database';
 import { ExpenseSchema, ExpenseSplitSchema } from './expenses.schema';
 import { IExpense, IExpenseSplit } from './expenses.interface';
@@ -14,6 +14,11 @@ export interface IExpenseRepository {
     description?: string | null;
     category?: string | null;
     receiptUrl?: string | null;
+    isRecurring?: boolean;
+    recurrenceFrequency?: string | null;
+    recurrenceEndDate?: Date | null;
+    recurrenceParentId?: string | null;
+    nextOccurrenceAt?: Date | null;
   }): Promise<IExpense>;
   findById(id: string): Promise<IExpense | null>;
   findByPool(poolId: string): Promise<IExpense[]>;
@@ -33,6 +38,11 @@ export interface IExpenseRepository {
     owedBy: string,
     toUserId: string,
   ): Promise<IExpenseSplit[]>;
+  getDueRecurring(): Promise<IExpense[]>;
+  updateRecurring(
+    id: string,
+    data: { nextOccurrenceAt?: Date | null; isRecurring?: boolean },
+  ): Promise<void>;
 }
 
 @injectable()
@@ -136,6 +146,35 @@ class ExpenseRepositoryImpl implements IExpenseRepository {
         ),
       );
     return rows.map((r) => r.split) as unknown as IExpenseSplit[];
+  }
+
+  /**
+   * Returns all active recurring expense templates whose next_occurrence_at is due now
+   * and whose recurrence_end_date has not yet passed (or has no end date).
+   */
+  async getDueRecurring(): Promise<IExpense[]> {
+    const now = new Date();
+    const rows = await this.db.client
+      .select()
+      .from(ExpenseSchema)
+      .where(
+        and(
+          eq(ExpenseSchema.isRecurring, true),
+          lte(ExpenseSchema.nextOccurrenceAt, now),
+          or(isNull(ExpenseSchema.recurrenceEndDate), gte(ExpenseSchema.recurrenceEndDate, now)),
+        ),
+      );
+    return rows as unknown as IExpense[];
+  }
+
+  async updateRecurring(
+    id: string,
+    data: { nextOccurrenceAt?: Date | null; isRecurring?: boolean },
+  ): Promise<void> {
+    const updateData: Partial<typeof ExpenseSchema.$inferInsert> = {};
+    if (data.nextOccurrenceAt !== undefined) updateData.nextOccurrenceAt = data.nextOccurrenceAt;
+    if (data.isRecurring !== undefined) updateData.isRecurring = data.isRecurring;
+    await this.db.client.update(ExpenseSchema).set(updateData).where(eq(ExpenseSchema.id, id));
   }
 }
 

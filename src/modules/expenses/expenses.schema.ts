@@ -14,6 +14,12 @@ export const ExpenseSchema = pgTable('expenses', {
   category: varchar('category', { length: 50 }),
   receiptUrl: text('receipt_url'),
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+  // Recurring expense fields
+  isRecurring: boolean('is_recurring').default(false).notNull(),
+  recurrenceFrequency: varchar('recurrence_frequency', { length: 20 }),
+  recurrenceEndDate: timestamp('recurrence_end_date', { withTimezone: true }),
+  recurrenceParentId: text('recurrence_parent_id'), // null on parent; set on auto-generated instances
+  nextOccurrenceAt: timestamp('next_occurrence_at', { withTimezone: true }),
 });
 
 export const ExpenseSplitSchema = pgTable('expense_splits', {

@@ -110,6 +110,25 @@ class AuthController extends BaseController {
    *     responses:
    *       '200':
    *         description: Authentication successful
+   *         content:
+   *           application/json:
+   *             schema:
+   *               type: object
+   *               properties:
+   *                 success: { type: boolean }
+   *                 data:
+   *                   type: object
+   *                   properties:
+   *                     token: { type: string, example: billbot_sess_abc123 }
+   *                     user:
+   *                       type: object
+   *                       properties:
+   *                         id: { type: string }
+   *                         name: { type: string }
+   *                         email: { type: string, nullable: true }
+   *                         avatar_url: { type: string, nullable: true }
+   *                         created_at: { type: string, format: date-time }
+   *                     isNewUser: { type: boolean }
    *       '400':
    *         $ref: '#/components/responses/BadRequest'
    *       '500':
@@ -161,6 +180,20 @@ class AuthController extends BaseController {
    *     responses:
    *       '200':
    *         description: Current user profile
+   *         content:
+   *           application/json:
+   *             schema:
+   *               type: object
+   *               properties:
+   *                 success: { type: boolean }
+   *                 data:
+   *                   type: object
+   *                   properties:
+   *                     id: { type: string }
+   *                     name: { type: string }
+   *                     email: { type: string, nullable: true }
+   *                     avatar_url: { type: string, nullable: true }
+   *                     created_at: { type: string, format: date-time }
    *       '401':
    *         $ref: '#/components/responses/Unauthorized'
    */

@@ -84,6 +84,19 @@ class GroupController extends BaseController {
    *     responses:
    *       '200':
    *         description: List of groups
+   *         content:
+   *           application/json:
+   *             schema:
+   *               type: array
+   *               items:
+   *                 type: object
+   *                 properties:
+   *                   id: { type: string }
+   *                   name: { type: string }
+   *                   description: { type: string, nullable: true }
+   *                   invite_code: { type: string }
+   *                   created_by: { type: string, nullable: true }
+   *                   created_at: { type: string, format: date-time }
    *       '401':
    *         $ref: '#/components/responses/Unauthorized'
    */
@@ -109,7 +122,29 @@ class GroupController extends BaseController {
    *         schema: { type: string }
    *     responses:
    *       '200':
-   *         description: Group detail
+   *         description: Group detail with members
+   *         content:
+   *           application/json:
+   *             schema:
+   *               type: object
+   *               properties:
+   *                 id: { type: string }
+   *                 name: { type: string }
+   *                 description: { type: string, nullable: true }
+   *                 invite_code: { type: string }
+   *                 created_by: { type: string, nullable: true }
+   *                 created_at: { type: string, format: date-time }
+   *                 members:
+   *                   type: array
+   *                   items:
+   *                     type: object
+   *                     properties:
+   *                       user_id: { type: string }
+   *                       name: { type: string }
+   *                       email: { type: string, nullable: true }
+   *                       avatar_url: { type: string, nullable: true }
+   *                       role: { type: string, enum: [admin, member] }
+   *                       joined_at: { type: string, format: date-time }
    *       '403':
    *         $ref: '#/components/responses/Forbidden'
    *       '404':

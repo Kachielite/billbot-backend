@@ -51,7 +51,28 @@ class PoolController extends BaseController {
    *         schema: { type: string }
    *     responses:
    *       '200':
-   *         description: Pool detail
+   *         description: Pool detail with members
+   *         content:
+   *           application/json:
+   *             schema:
+   *               type: object
+   *               properties:
+   *                 id: { type: string }
+   *                 group_id: { type: string }
+   *                 name: { type: string }
+   *                 description: { type: string, nullable: true }
+   *                 status: { type: string, enum: [active, settled, closed] }
+   *                 split_type: { type: string }
+   *                 created_by: { type: string, nullable: true }
+   *                 created_at: { type: string, format: date-time }
+   *                 members:
+   *                   type: array
+   *                   items:
+   *                     type: object
+   *                     properties:
+   *                       pool_id: { type: string }
+   *                       user_id: { type: string }
+   *                       joined_at: { type: string, format: date-time }
    *       '403':
    *         $ref: '#/components/responses/Forbidden'
    *       '404':

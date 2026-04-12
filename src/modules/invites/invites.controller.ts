@@ -55,6 +55,20 @@ class InviteController extends BaseController {
    *     responses:
    *       '201':
    *         description: Invite created
+   *         content:
+   *           application/json:
+   *             schema:
+   *               type: object
+   *               properties:
+   *                 id: { type: string }
+   *                 group_id: { type: string }
+   *                 invited_by: { type: string, nullable: true }
+   *                 phone: { type: string, nullable: true }
+   *                 email: { type: string, nullable: true }
+   *                 token: { type: string }
+   *                 status: { type: string, example: pending }
+   *                 expires_at: { type: string, format: date-time }
+   *                 created_at: { type: string, format: date-time }
    *       '403':
    *         $ref: '#/components/responses/Forbidden'
    *       '401':
@@ -84,6 +98,22 @@ class InviteController extends BaseController {
    *     responses:
    *       '200':
    *         description: List of pending invites
+   *         content:
+   *           application/json:
+   *             schema:
+   *               type: array
+   *               items:
+   *                 type: object
+   *                 properties:
+   *                   id: { type: string }
+   *                   group_id: { type: string }
+   *                   invited_by: { type: string, nullable: true }
+   *                   phone: { type: string, nullable: true }
+   *                   email: { type: string, nullable: true }
+   *                   token: { type: string }
+   *                   status: { type: string, example: pending }
+   *                   expires_at: { type: string, format: date-time }
+   *                   created_at: { type: string, format: date-time }
    *       '403':
    *         $ref: '#/components/responses/Forbidden'
    *       '401':
@@ -150,6 +180,14 @@ class InviteController extends BaseController {
    *     responses:
    *       '200':
    *         description: Joined group successfully
+   *         content:
+   *           application/json:
+   *             schema:
+   *               type: object
+   *               properties:
+   *                 success: { type: boolean }
+   *                 message: { type: string, example: Successfully joined the group. }
+   *                 data: { type: object, nullable: true }
    *       '400':
    *         $ref: '#/components/responses/BadRequest'
    *       '404':

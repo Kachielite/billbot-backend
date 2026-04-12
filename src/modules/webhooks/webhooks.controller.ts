@@ -59,7 +59,21 @@ class WebhookController extends BaseController {
    *                   enum: [group.created, member.invited, member.joined, member.removed, pool.created, pool.settled, pool.member_added, expense.created, expense.deleted, settlement.submitted, settlement.confirmed, settlement.disputed]
    *     responses:
    *       '201':
-   *         description: Webhook registered. Secret returned once.
+   *         description: Webhook registered. Secret returned once — store it immediately.
+   *         content:
+   *           application/json:
+   *             schema:
+   *               type: object
+   *               properties:
+   *                 id: { type: string }
+   *                 group_id: { type: string }
+   *                 url: { type: string }
+   *                 secret: { type: string, description: 'HMAC-SHA256 signing secret. Returned only on creation.' }
+   *                 events:
+   *                   type: array
+   *                   items: { type: string }
+   *                 created_by: { type: string, nullable: true }
+   *                 created_at: { type: string, format: date-time }
    *       '403':
    *         $ref: '#/components/responses/Forbidden'
    *       '401':
@@ -88,7 +102,22 @@ class WebhookController extends BaseController {
    *         schema: { type: string }
    *     responses:
    *       '200':
-   *         description: Webhook list
+   *         description: Webhook list (secrets omitted)
+   *         content:
+   *           application/json:
+   *             schema:
+   *               type: array
+   *               items:
+   *                 type: object
+   *                 properties:
+   *                   id: { type: string }
+   *                   group_id: { type: string }
+   *                   url: { type: string }
+   *                   events:
+   *                     type: array
+   *                     items: { type: string }
+   *                   created_by: { type: string, nullable: true }
+   *                   created_at: { type: string, format: date-time }
    *       '403':
    *         $ref: '#/components/responses/Forbidden'
    *       '401':

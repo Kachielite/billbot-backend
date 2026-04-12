@@ -3,7 +3,8 @@ import { v4 as uuidv4 } from 'uuid';
 import { IExpenseRepository } from './expenses.repository';
 import { IExpense, IParsedReceipt } from './expenses.interface';
 import { CreateExpenseDTO, ExpenseResponseDTO } from './expenses.dto';
-import { IPagination } from '@/common/types/interface';
+import { RecurrenceFrequency } from './expenses.enum';
+import { IPagination, IGeneralResponse } from '@/common/types/interface';
 import { IPoolRepository } from '@/modules/pools/pools.repository';
 import { WebhookDispatcher } from '@/modules/webhooks/webhooks.dispatcher';
 import { uploadFile } from '@/common/lib/storage';
@@ -37,6 +38,7 @@ export interface IExpenseService {
     userId: string,
   ): Promise<ExpenseResponseDTO & { splits: unknown[] }>;
   deleteExpense(expenseId: string, userId: string): Promise<{ success: boolean; message: string }>;
+  cancelRecurrence(expenseId: string, userId: string): Promise<IGeneralResponse<null>>;
 }
 
 @injectable()
@@ -67,6 +69,12 @@ class ExpenseService implements IExpenseService {
         receiptUrl = await uploadFile('billbot/receipts', path, file.buffer, file.mimetype);
       }
 
+      const now = new Date();
+      const nextOccurrenceAt =
+        data.isRecurring && data.recurrenceFrequency
+          ? computeNextOccurrence(now, data.recurrenceFrequency as RecurrenceFrequency)
+          : null;
+
       const expense = await this.expenseRepository.create({
         id: uuidv4(),
         poolId,
@@ -76,6 +84,11 @@ class ExpenseService implements IExpenseService {
         description: data.description ?? null,
         category: data.category ?? null,
         receiptUrl,
+        isRecurring: data.isRecurring ?? false,
+        recurrenceFrequency: data.recurrenceFrequency ?? null,
+        recurrenceEndDate: data.recurrenceEndDate ? new Date(data.recurrenceEndDate) : null,
+        recurrenceParentId: null,
+        nextOccurrenceAt,
       });
 
       // Calculate equal splits among all pool members
@@ -218,6 +231,44 @@ class ExpenseService implements IExpenseService {
     }
   }
 
+  async cancelRecurrence(expenseId: string, userId: string): Promise<IGeneralResponse<null>> {
+    try {
+      const expense = await this.expenseRepository.findById(expenseId);
+      if (!expense) throw new ResourceNotFoundException('Expense not found.');
+
+      const member = await this.poolRepository.getMember(expense.poolId, userId);
+      if (!member) throw new ForbiddenException('You are not a member of this pool.');
+
+      if (expense.paidBy !== userId) {
+        throw new ForbiddenException('Only the payer can cancel a recurring expense.');
+      }
+
+      if (!expense.isRecurring) {
+        throw new BadRequestException('This expense is not set as recurring.');
+      }
+
+      await this.expenseRepository.updateRecurring(expenseId, {
+        isRecurring: false,
+        nextOccurrenceAt: null,
+      });
+
+      return {
+        success: true,
+        message: 'Recurring schedule cancelled. No further instances will be generated.',
+        data: null,
+      };
+    } catch (error) {
+      if (
+        error instanceof ResourceNotFoundException ||
+        error instanceof ForbiddenException ||
+        error instanceof BadRequestException
+      )
+        throw error;
+      logger.error(`Error cancelling recurrence: ${error}`);
+      throw new InternalServerException('Failed to cancel recurring expense.');
+    }
+  }
+
   private mapToDTO(expense: IExpense): ExpenseResponseDTO {
     return {
       id: expense.id,
@@ -229,8 +280,39 @@ class ExpenseService implements IExpenseService {
       category: expense.category,
       receipt_url: expense.receiptUrl,
       created_at: expense.createdAt,
+      is_recurring: expense.isRecurring,
+      recurrence_frequency: expense.recurrenceFrequency,
+      recurrence_end_date: expense.recurrenceEndDate,
+      recurrence_parent_id: expense.recurrenceParentId,
+      next_occurrence_at: expense.nextOccurrenceAt,
     };
   }
 }
 
 export default ExpenseService;
+
+/**
+ * Calculates the next occurrence date from a given base date and frequency.
+ * Always advances from the base to prevent drift.
+ */
+export function computeNextOccurrence(from: Date, frequency: RecurrenceFrequency): Date {
+  const next = new Date(from);
+  switch (frequency) {
+    case RecurrenceFrequency.DAILY:
+      next.setDate(next.getDate() + 1);
+      break;
+    case RecurrenceFrequency.WEEKLY:
+      next.setDate(next.getDate() + 7);
+      break;
+    case RecurrenceFrequency.BIWEEKLY:
+      next.setDate(next.getDate() + 14);
+      break;
+    case RecurrenceFrequency.MONTHLY:
+      next.setMonth(next.getMonth() + 1);
+      break;
+    case RecurrenceFrequency.YEARLY:
+      next.setFullYear(next.getFullYear() + 1);
+      break;
+  }
+  return next;
+}

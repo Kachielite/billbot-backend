@@ -8,6 +8,11 @@ export interface IExpense {
   category: string | null;
   receiptUrl: string | null;
   createdAt: Date;
+  isRecurring: boolean;
+  recurrenceFrequency: string | null;
+  recurrenceEndDate: Date | null;
+  recurrenceParentId: string | null;
+  nextOccurrenceAt: Date | null;
 }
 
 export interface IExpenseSplit {
