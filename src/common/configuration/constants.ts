@@ -14,6 +14,9 @@ export const CONSTANTS = {
   APPLE_BUNDLE_ID: process.env.APPLE_BUNDLE_ID || 'app.billbot',
   APP_BASE_URL: process.env.APP_BASE_URL || 'http://localhost:3000',
   FRONTEND_ORIGIN: process.env.FRONTEND_ORIGIN || 'http://localhost:3001',
+  // Email (Google SMTP — requires a Gmail App Password)
+  SMTP_USER: process.env.SMTP_USER || '',
+  SMTP_PASS: process.env.SMTP_PASS || '',
 };
 
 /**

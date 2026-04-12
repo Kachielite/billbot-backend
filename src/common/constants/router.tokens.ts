@@ -9,4 +9,5 @@ export const ROUTER_TOKENS = {
   SETTLEMENTS: Symbol.for('SettlementsRouter'),
   WEBHOOKS: Symbol.for('WebhooksRouter'),
   CATEGORIES: Symbol.for('CategoriesRouter'),
+  NOTIFICATIONS: Symbol.for('NotificationsRouter'),
 };

@@ -93,9 +93,14 @@ export class BaseController {
           next(error);
         }
       });
-
-      logger.info(`  [${method.toUpperCase()}] /v1${prefix}${fullPath}`);
     });
+
+    // One summary line per controller instead of a line per route
+    const moduleName = this.constructor.name.replace(/Controller$/, '');
+    const count = routes.length;
+    logger.info(
+      `${moduleName} service started with ${count} endpoint${count !== 1 ? 's' : ''} → /v1${prefix}`,
+    );
   }
 
   getRouter(): Router {

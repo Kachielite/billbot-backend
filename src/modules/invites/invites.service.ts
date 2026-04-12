@@ -5,7 +5,14 @@ import { IInvite } from './invites.interface';
 import { CreateInviteDTO } from './invites.dto';
 import { IGeneralResponse } from '@/common/types/interface';
 import { IGroupRepository } from '@/modules/groups/groups.repository';
+import { IUserRepository } from '@/modules/users/users.repository';
 import { WebhookDispatcher } from '@/modules/webhooks/webhooks.dispatcher';
+import NotificationService, {
+  INotificationService,
+} from '@/modules/notifications/notifications.service';
+import emailService from '@/common/lib/email';
+import { buildInviteEmail } from '@/common/lib/email/templates/invite.template';
+import { CONSTANTS } from '@/common/configuration/constants';
 import {
   BadRequestException,
   ForbiddenException,
@@ -29,15 +36,20 @@ class InviteService implements IInviteService {
   constructor(
     @inject('IInviteRepository') private inviteRepository: IInviteRepository,
     @inject('IGroupRepository') private groupRepository: IGroupRepository,
+    @inject('IUserRepository') private userRepository: IUserRepository,
     @inject(WebhookDispatcher) private webhookDispatcher: WebhookDispatcher,
+    @inject(NotificationService) private notificationService: INotificationService,
   ) {}
 
   async createInvite(groupId: string, invitedBy: string, data: CreateInviteDTO): Promise<IInvite> {
     try {
-      const group = await this.groupRepository.findById(groupId);
-      if (!group) throw new ResourceNotFoundException('Group not found.');
+      const [group, member, inviter] = await Promise.all([
+        this.groupRepository.findById(groupId),
+        this.groupRepository.getMember(groupId, invitedBy),
+        this.userRepository.findById(invitedBy),
+      ]);
 
-      const member = await this.groupRepository.getMember(groupId, invitedBy);
+      if (!group) throw new ResourceNotFoundException('Group not found.');
       if (!member) throw new ForbiddenException('You must be a group member to invite others.');
 
       const expiresAt = new Date(Date.now() + INVITE_EXPIRES_DAYS * 24 * 60 * 60 * 1000);
@@ -58,6 +70,51 @@ class InviteService implements IInviteService {
         phone: data.phone,
         email: data.email,
       });
+
+      // Check if the invited person is already on the platform
+      const inviterName = inviter?.name ?? 'A BillBot member';
+      const inviteLink = `${CONSTANTS.APP_BASE_URL}/invites/join/${token}`;
+
+      if (data.email) {
+        const existingUser = await this.userRepository.findByEmail(data.email);
+
+        if (existingUser) {
+          // User is on the platform — send an in-app notification
+          this.notificationService
+            .notify(
+              existingUser.id,
+              'invite.received',
+              `You've been invited to ${group.name}`,
+              `${inviterName} has invited you to join the group "${group.name}". Open the app to accept.`,
+              { group_id: groupId, invite_id: invite.id, invite_token: token },
+            )
+            .catch(() => {}); // fire-and-forget
+        } else {
+          // User is not on the platform — send an email invitation
+          const { subject, html } = buildInviteEmail({
+            inviterName,
+            groupName: group.name,
+            inviteLink,
+            expiresInDays: INVITE_EXPIRES_DAYS,
+          });
+          emailService.sendHtml(data.email, subject, html).catch(() => {}); // fire-and-forget
+        }
+      } else if (data.phone) {
+        // Phone-only invite: check if a user with that phone exists for in-app notification
+        const existingUser = await this.userRepository.findByPhone(data.phone);
+        if (existingUser) {
+          this.notificationService
+            .notify(
+              existingUser.id,
+              'invite.received',
+              `You've been invited to ${group.name}`,
+              `${inviterName} has invited you to join the group "${group.name}". Open the app to accept.`,
+              { group_id: groupId, invite_id: invite.id, invite_token: token },
+            )
+            .catch(() => {});
+        }
+        // Phone-only invites to unknown users are handled via SMS (out of scope for now)
+      }
 
       return invite;
     } catch (error) {
@@ -128,13 +185,30 @@ class InviteService implements IInviteService {
         throw new ConflictException('You are already a member of this group.');
       }
 
-      await this.groupRepository.addMember(invite.groupId, userId, 'member');
-      await this.inviteRepository.updateStatus(invite.id, 'accepted');
+      const [group] = await Promise.all([
+        this.groupRepository.findById(invite.groupId),
+        this.groupRepository.addMember(invite.groupId, userId, 'member'),
+        this.inviteRepository.updateStatus(invite.id, 'accepted'),
+      ]);
 
       this.webhookDispatcher.dispatch(invite.groupId, 'member.joined', {
         user_id: userId,
         group_id: invite.groupId,
       });
+
+      // Notify the person who sent the invite that it was accepted
+      if (invite.invitedBy) {
+        const joiner = await this.userRepository.findById(userId);
+        this.notificationService
+          .notify(
+            invite.invitedBy,
+            'member.joined',
+            `${joiner?.name ?? 'Someone'} joined ${group?.name ?? 'your group'}`,
+            `Your invite was accepted. ${joiner?.name ?? 'A new member'} has joined the group.`,
+            { group_id: invite.groupId, user_id: userId },
+          )
+          .catch(() => {});
+      }
 
       return { success: true, message: 'You have joined the group.', data: null };
     } catch (error) {

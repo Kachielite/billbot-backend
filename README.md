@@ -246,6 +246,34 @@ If your endpoint does not return HTTP 200, delivery is retried up to 3 times: af
 
 ---
 
+### Notifications
+
+An in-app notification centre that records activity relevant to a user. Notifications are written automatically by the server — clients read and dismiss them.
+
+| Method | Route | What it does |
+|---|---|---|
+| `GET` | `/v1/notifications` | Returns paginated notifications for the signed-in user, newest first. Accepts `page` and `limit` query params (limit capped at 100, default 20). The response includes an `unread` count alongside the usual pagination fields. |
+| `PATCH` | `/v1/notifications/:id/read` | Marks a single notification as read. |
+| `PATCH` | `/v1/notifications/read-all` | Marks every unread notification for the user as read in one call. |
+
+**Notification types:**
+
+| Type | When it is created |
+|---|---|
+| `invite.received` | A user is invited to a group (only sent if the invitee already has an account) |
+| `member.joined` | An invite you sent was accepted and the new member has joined the group |
+| `expense.created` | A new expense is logged in a pool you belong to |
+| `settlement.submitted` | A payer submits proof of payment to you |
+| `settlement.confirmed` | The payee confirms a settlement you submitted |
+| `settlement.disputed` | The payee disputes a settlement you submitted |
+| `general` | Miscellaneous platform messages |
+
+Each notification carries a `metadata` object with relevant IDs (e.g. `group_id`, `invite_id`) so the client can deep-link to the right screen.
+
+Notifications are fire-and-forget: a failure to create a notification never breaks the action that triggered it.
+
+---
+
 ## Database Scripts
 
 ```bash
@@ -286,5 +314,6 @@ src/
     ├── expenses/             # Expense logging, equal splits, AI receipt parsing
     ├── balances/             # Debt simplification and balance summaries
     ├── settlements/          # Proof upload, confirm/dispute flow, split clearing
-    └── webhooks/             # Subscription management + async event dispatcher
+    ├── webhooks/             # Subscription management + async event dispatcher
+    └── notifications/        # In-app notification centre: create, list, mark read
 ```

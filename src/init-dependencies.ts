@@ -25,6 +25,7 @@ import {
   registerCategoryDependencies,
   seedCategories,
 } from '@/modules/categories/categories.dependencies';
+import { registerNotificationDependencies } from '@/modules/notifications/notifications.dependencies';
 
 export async function configureContainer(): Promise<void> {
   // Core singletons
@@ -48,17 +49,19 @@ export async function configureContainer(): Promise<void> {
   registerGroupDependencies();
   // 4. Full webhook module (WebhookService needs IGroupRepository, now registered)
   registerWebhookDependencies();
-  // 5. Invites (needs IGroupRepository + WebhookDispatcher)
+  // 5. Notifications (needed by invites and other modules for in-app notifications)
+  registerNotificationDependencies();
+  // 6. Invites (needs IGroupRepository + WebhookDispatcher + NotificationService)
   registerInviteDependencies();
-  // 6. Pools (needed by expenses, balances, settlements)
+  // 7. Pools (needed by expenses, balances, settlements)
   registerPoolDependencies();
-  // 7. Categories (needed by expenses for FK validation)
+  // 8. Categories (needed by expenses for FK validation)
   registerCategoryDependencies();
-  // 8. Expenses (needs ICategoryRepository)
+  // 9. Expenses (needs ICategoryRepository)
   registerExpenseDependencies();
-  // 9. Balances
+  // 10. Balances
   registerBalanceDependencies();
-  // 10. Settlements
+  // 11. Settlements
   registerSettlementDependencies();
 
   // Seed reference data (idempotent — skips if already populated)
