@@ -8,4 +8,5 @@ export const ROUTER_TOKENS = {
   BALANCES: Symbol.for('BalancesRouter'),
   SETTLEMENTS: Symbol.for('SettlementsRouter'),
   WEBHOOKS: Symbol.for('WebhooksRouter'),
+  CATEGORIES: Symbol.for('CategoriesRouter'),
 };

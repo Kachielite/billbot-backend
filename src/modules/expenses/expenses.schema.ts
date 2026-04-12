@@ -1,6 +1,7 @@
 import { boolean, numeric, pgTable, text, timestamp, varchar } from 'drizzle-orm/pg-core';
 import { ExpensePoolSchema } from '@/modules/pools/pools.schema';
 import { UserSchema } from '@/modules/users/users.schema';
+import { CategorySchema } from '@/modules/categories/categories.schema';
 
 export const ExpenseSchema = pgTable('expenses', {
   id: text('id').primaryKey(),
@@ -11,7 +12,7 @@ export const ExpenseSchema = pgTable('expenses', {
   amount: numeric('amount', { precision: 12, scale: 2 }).notNull(),
   currency: varchar('currency', { length: 5 }).default('NGN').notNull(),
   description: varchar('description', { length: 255 }),
-  category: varchar('category', { length: 50 }),
+  categoryId: text('category_id').references(() => CategorySchema.id),
   receiptUrl: text('receipt_url'),
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
   // Recurring expense fields

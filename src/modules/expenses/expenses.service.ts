@@ -6,6 +6,7 @@ import { CreateExpenseDTO, ExpenseResponseDTO } from './expenses.dto';
 import { RecurrenceFrequency } from './expenses.enum';
 import { IPagination, IGeneralResponse } from '@/common/types/interface';
 import { IPoolRepository } from '@/modules/pools/pools.repository';
+import { ICategoryRepository } from '@/modules/categories/categories.repository';
 import { WebhookDispatcher } from '@/modules/webhooks/webhooks.dispatcher';
 import { uploadFile } from '@/common/lib/storage';
 import { parseReceipt } from '@/common/lib/ai-parser';
@@ -46,6 +47,7 @@ class ExpenseService implements IExpenseService {
   constructor(
     @inject('IExpenseRepository') private expenseRepository: IExpenseRepository,
     @inject('IPoolRepository') private poolRepository: IPoolRepository,
+    @inject('ICategoryRepository') private categoryRepository: ICategoryRepository,
     @inject(WebhookDispatcher) private webhookDispatcher: WebhookDispatcher,
   ) {}
 
@@ -61,6 +63,12 @@ class ExpenseService implements IExpenseService {
 
       const member = await this.poolRepository.getMember(poolId, userId);
       if (!member) throw new ForbiddenException('You are not a member of this pool.');
+
+      // Validate categoryId if provided
+      if (data.categoryId) {
+        const category = await this.categoryRepository.findById(data.categoryId);
+        if (!category) throw new BadRequestException('Invalid categoryId — category not found.');
+      }
 
       // Upload receipt if provided (non-blocking if parse fails)
       let receiptUrl: string | null = null;
@@ -82,7 +90,7 @@ class ExpenseService implements IExpenseService {
         amount: data.amount.toString(),
         currency: data.currency,
         description: data.description ?? null,
-        category: data.category ?? null,
+        categoryId: data.categoryId ?? null,
         receiptUrl,
         isRecurring: data.isRecurring ?? false,
         recurrenceFrequency: data.recurrenceFrequency ?? null,
@@ -277,7 +285,7 @@ class ExpenseService implements IExpenseService {
       amount: expense.amount,
       currency: expense.currency,
       description: expense.description,
-      category: expense.category,
+      category_id: expense.categoryId,
       receipt_url: expense.receiptUrl,
       created_at: expense.createdAt,
       is_recurring: expense.isRecurring,

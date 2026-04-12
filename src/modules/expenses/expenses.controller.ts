@@ -68,7 +68,7 @@ class ExpenseController extends BaseController {
    *             properties:
    *               amount: { type: number }
    *               description: { type: string }
-   *               category: { type: string, enum: [rent, school_fees, food, transport, utilities, medical, other] }
+   *               categoryId: { type: string, format: uuid, description: 'UUID from GET /v1/categories' }
    *               currency: { type: string, enum: [NGN, KES, GHS, ZAR], default: NGN }
    *               receipt: { type: string, format: binary }
    *               isRecurring: { type: boolean, default: false, description: 'Mark this expense as recurring' }
@@ -88,7 +88,7 @@ class ExpenseController extends BaseController {
    *                 amount: { type: string, example: '3000.00' }
    *                 currency: { type: string, example: NGN }
    *                 description: { type: string, nullable: true }
-   *                 category: { type: string, nullable: true }
+   *                 category_id: { type: string, nullable: true }
    *                 receipt_url: { type: string, nullable: true }
    *                 created_at: { type: string, format: date-time }
    *                 is_recurring: { type: boolean }
@@ -305,7 +305,7 @@ class ExpenseController extends BaseController {
    *                 amount: { type: string }
    *                 currency: { type: string }
    *                 description: { type: string, nullable: true }
-   *                 category: { type: string, nullable: true }
+   *                 category_id: { type: string, nullable: true }
    *                 receipt_url: { type: string, nullable: true }
    *                 created_at: { type: string, format: date-time }
    *                 splits:

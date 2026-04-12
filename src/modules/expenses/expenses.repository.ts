@@ -12,7 +12,7 @@ export interface IExpenseRepository {
     amount: string;
     currency: string;
     description?: string | null;
-    category?: string | null;
+    categoryId?: string | null;
     receiptUrl?: string | null;
     isRecurring?: boolean;
     recurrenceFrequency?: string | null;
@@ -56,8 +56,13 @@ class ExpenseRepositoryImpl implements IExpenseRepository {
     amount: string;
     currency: string;
     description?: string | null;
-    category?: string | null;
+    categoryId?: string | null;
     receiptUrl?: string | null;
+    isRecurring?: boolean;
+    recurrenceFrequency?: string | null;
+    recurrenceEndDate?: Date | null;
+    recurrenceParentId?: string | null;
+    nextOccurrenceAt?: Date | null;
   }): Promise<IExpense> {
     const [row] = await this.db.client.insert(ExpenseSchema).values(data).returning();
     return row as unknown as IExpense;

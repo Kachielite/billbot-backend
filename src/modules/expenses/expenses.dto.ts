@@ -1,11 +1,12 @@
 import { z } from 'zod';
-import { ExpenseCategory, Currency, RecurrenceFrequency } from './expenses.enum';
+import { Currency, RecurrenceFrequency } from './expenses.enum';
 
 export const CreateExpenseSchema = z
   .object({
     amount: z.coerce.number().positive('Amount must be positive'),
     description: z.string().max(255).optional(),
-    category: z.nativeEnum(ExpenseCategory).optional(),
+    /** UUID of a category from GET /v1/categories */
+    categoryId: z.string().uuid('categoryId must be a valid UUID').optional(),
     currency: z.nativeEnum(Currency).default(Currency.NGN),
     isRecurring: z.coerce.boolean().optional().default(false),
     recurrenceFrequency: z.nativeEnum(RecurrenceFrequency).optional(),
@@ -28,7 +29,7 @@ export const ExpenseResponseSchema = z.object({
   amount: z.string(),
   currency: z.string(),
   description: z.string().nullable(),
-  category: z.string().nullable(),
+  category_id: z.string().nullable(),
   receipt_url: z.string().nullable(),
   created_at: z.date(),
   is_recurring: z.boolean(),

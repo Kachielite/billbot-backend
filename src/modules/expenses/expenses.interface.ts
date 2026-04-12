@@ -5,7 +5,7 @@ export interface IExpense {
   amount: string;
   currency: string;
   description: string | null;
-  category: string | null;
+  categoryId: string | null;
   receiptUrl: string | null;
   createdAt: Date;
   isRecurring: boolean;

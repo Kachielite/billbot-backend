@@ -21,6 +21,10 @@ import {
 } from '@/modules/expenses/expenses.dependencies';
 import { registerBalanceDependencies } from '@/modules/balances/balances.dependencies';
 import { registerSettlementDependencies } from '@/modules/settlements/settlements.dependencies';
+import {
+  registerCategoryDependencies,
+  seedCategories,
+} from '@/modules/categories/categories.dependencies';
 
 export async function configureContainer(): Promise<void> {
   // Core singletons
@@ -48,12 +52,17 @@ export async function configureContainer(): Promise<void> {
   registerInviteDependencies();
   // 6. Pools (needed by expenses, balances, settlements)
   registerPoolDependencies();
-  // 7. Expenses (needed by balances, settlements)
+  // 7. Categories (needed by expenses for FK validation)
+  registerCategoryDependencies();
+  // 8. Expenses (needs ICategoryRepository)
   registerExpenseDependencies();
-  // 8. Balances
+  // 9. Balances
   registerBalanceDependencies();
-  // 9. Settlements
+  // 10. Settlements
   registerSettlementDependencies();
+
+  // Seed reference data (idempotent — skips if already populated)
+  await seedCategories();
 
   // Start background schedulers (after all deps are registered)
   startRecurringExpenseScheduler();

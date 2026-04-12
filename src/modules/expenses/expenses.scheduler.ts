@@ -61,7 +61,7 @@ export class RecurringExpenseScheduler {
     amount: string;
     currency: string;
     description: string | null;
-    category: string | null;
+    categoryId: string | null;
     isRecurring: boolean;
     recurrenceFrequency: string | null;
     recurrenceEndDate: Date | null;
@@ -77,7 +77,7 @@ export class RecurringExpenseScheduler {
       amount: template.amount,
       currency: template.currency,
       description: template.description,
-      category: template.category,
+      categoryId: template.categoryId,
       receiptUrl: null,
       isRecurring: false,
       recurrenceFrequency: null,
