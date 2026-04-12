@@ -6,11 +6,13 @@ import { IWebhookSubscription } from './webhooks.interface';
 import { CreateWebhookDTO } from './webhooks.dto';
 import { IGeneralResponse } from '@/common/types/interface';
 import {
+  BadRequestException,
   ForbiddenException,
   InternalServerException,
   ResourceNotFoundException,
 } from '@/common/exception';
 import { IGroupRepository } from '@/modules/groups/groups.repository';
+import { assertSafeWebhookUrl } from '@/common/utils/ssrf-guard';
 import logger from '@/common/lib/logger';
 
 export interface IWebhookService {
@@ -48,6 +50,13 @@ class WebhookService implements IWebhookService {
         throw new ForbiddenException('Only group admins can register webhooks.');
       }
 
+      // SSRF guard: DNS-resolve and reject private/internal addresses
+      try {
+        await assertSafeWebhookUrl(data.url);
+      } catch (err) {
+        throw new BadRequestException((err as Error).message);
+      }
+
       const secret = crypto.randomBytes(32).toString('hex');
       const sub = await this.webhookRepository.createSubscription({
         id: uuidv4(),
@@ -60,7 +69,7 @@ class WebhookService implements IWebhookService {
 
       return { ...sub, secret };
     } catch (error) {
-      if (error instanceof ForbiddenException) throw error;
+      if (error instanceof ForbiddenException || error instanceof BadRequestException) throw error;
       logger.error(`Error creating webhook subscription: ${error}`);
       throw new InternalServerException('Failed to create webhook subscription.');
     }

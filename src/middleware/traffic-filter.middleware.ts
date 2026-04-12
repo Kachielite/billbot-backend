@@ -2,8 +2,17 @@ import { Request, Response, NextFunction } from 'express';
 
 const RATE_LIMIT_WINDOW_MS = 15 * 60 * 1000; // 15 minutes
 const MAX_REQUESTS = 200;
+const EVICTION_INTERVAL_MS = 5 * 60 * 1000; // sweep expired entries every 5 min
 
 const requestCounts = new Map<string, { count: number; resetAt: number }>();
+
+// Periodic eviction to prevent unbounded memory growth
+setInterval(() => {
+  const now = Date.now();
+  for (const [ip, entry] of requestCounts.entries()) {
+    if (now > entry.resetAt) requestCounts.delete(ip);
+  }
+}, EVICTION_INTERVAL_MS).unref(); // unref so this doesn't keep the process alive
 
 // Known probe/scanner paths to block
 const PROBE_PATHS = [

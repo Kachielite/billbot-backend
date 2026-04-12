@@ -7,6 +7,7 @@ import SettlementService, { ISettlementService } from './settlements.service';
 import { CreateSettlementSchema, CreateSettlementDTO } from './settlements.dto';
 import { IAuthenticatedRequest } from '@/common/types/interface';
 import { BadRequestException } from '@/common/exception';
+import { validateImageMagicBytes } from '@/common/utils/file-validator';
 
 const upload = multer({
   storage: multer.memoryStorage(),
@@ -87,6 +88,9 @@ class SettlementPoolController extends BaseController {
     upload.single('proof')(req, res, async (err) => {
       if (err) return next(new BadRequestException(err.message));
       if (!req.file) return next(new BadRequestException('Proof of payment image is required.'));
+      if (!validateImageMagicBytes(req.file.buffer, req.file.mimetype)) {
+        return next(new BadRequestException('File content does not match the declared type.'));
+      }
 
       try {
         const parsed = CreateSettlementSchema.safeParse({

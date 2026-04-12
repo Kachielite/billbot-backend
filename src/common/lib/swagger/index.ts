@@ -117,6 +117,11 @@ const options: swaggerJsdoc.Options = {
 };
 
 export function setupSwagger(app: Express): void {
+  // Do not expose API docs in production — route exploration is a privilege, not a default.
+  if (CONSTANTS.NODE_ENV === 'production') {
+    return;
+  }
+
   const spec = swaggerJsdoc(options);
   app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(spec, { explorer: true }));
   app.get('/api-docs.json', (_req, res) => {

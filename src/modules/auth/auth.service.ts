@@ -1,5 +1,6 @@
 import { inject, injectable } from 'tsyringe';
 import { v4 as uuidv4 } from 'uuid';
+import crypto from 'crypto';
 import { OAuth2Client } from 'google-auth-library';
 import appleSignin from 'apple-signin-auth';
 import { IAuthRepository } from './auth.repository';
@@ -151,7 +152,9 @@ class AuthService implements IAuthService {
 
   async logout(token: string): Promise<{ message: string }> {
     try {
-      await this.authRepository.deleteSessionByToken(token);
+      // token passed here is the raw bearer; hash before DB lookup
+      const tokenHash = crypto.createHash('sha256').update(token).digest('hex');
+      await this.authRepository.deleteSessionByToken(tokenHash);
       return { message: 'Logged out successfully.' };
     } catch (error) {
       logger.error(`Logout error: ${error}`);
@@ -159,15 +162,18 @@ class AuthService implements IAuthService {
     }
   }
 
-  private async createSession(userId: string) {
-    const token = `billbot_sess_${generateToken(32)}`;
+  private async createSession(userId: string): Promise<{ token: string }> {
+    const rawToken = `billbot_sess_${generateToken(32)}`;
+    // Only the SHA-256 hash is persisted; the raw token is returned once to the caller.
+    const tokenHash = crypto.createHash('sha256').update(rawToken).digest('hex');
     const expiresAt = new Date(Date.now() + SESSION_DURATION_MS);
-    return this.authRepository.createSession({
+    await this.authRepository.createSession({
       id: uuidv4(),
       userId,
-      token,
+      token: tokenHash,
       expiresAt,
     });
+    return { token: rawToken };
   }
 }
 

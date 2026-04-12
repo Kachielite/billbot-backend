@@ -13,6 +13,7 @@ import ExpenseService, { IExpenseService } from './expenses.service';
 import { CreateExpenseSchema, CreateExpenseDTO } from './expenses.dto';
 import { IAuthenticatedRequest } from '@/common/types/interface';
 import { BadRequestException } from '@/common/exception';
+import { validateImageMagicBytes } from '@/common/utils/file-validator';
 
 const upload = multer({
   storage: multer.memoryStorage(),
@@ -84,6 +85,10 @@ class ExpenseController extends BaseController {
       if (err) return next(new BadRequestException(err.message));
 
       try {
+        if (req.file && !validateImageMagicBytes(req.file.buffer, req.file.mimetype)) {
+          return next(new BadRequestException('File content does not match the declared type.'));
+        }
+
         const parsed = CreateExpenseSchema.safeParse({
           ...req.body,
           amount: Number(req.body.amount),
@@ -160,6 +165,9 @@ class ExpenseController extends BaseController {
     upload.single('receipt')(req, res, async (err) => {
       if (err) return next(new BadRequestException(err.message));
       if (!req.file) return next(new BadRequestException('Receipt image is required.'));
+      if (!validateImageMagicBytes(req.file.buffer, req.file.mimetype)) {
+        return next(new BadRequestException('File content does not match the declared type.'));
+      }
 
       try {
         const result = await this.expenseService.parseReceipt(req.file);

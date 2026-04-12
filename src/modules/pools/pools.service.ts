@@ -156,6 +156,12 @@ class PoolService implements IPoolService {
       const pool = await this.poolRepository.findById(poolId);
       if (!pool) throw new ResourceNotFoundException('Pool not found.');
 
+      // Caller must be a group admin
+      const caller = await this.groupRepository.getMember(pool.groupId, userId);
+      if (!caller || caller.role !== 'admin') {
+        throw new ForbiddenException('Only group admins can add pool members.');
+      }
+
       // Verify target is a group member
       const groupMember = await this.groupRepository.getMember(pool.groupId, data.userId);
       if (!groupMember) {
@@ -175,7 +181,11 @@ class PoolService implements IPoolService {
 
       return { success: true, message: 'Member added to pool.', data: null };
     } catch (error) {
-      if (error instanceof ResourceNotFoundException || error instanceof BadRequestException)
+      if (
+        error instanceof ResourceNotFoundException ||
+        error instanceof BadRequestException ||
+        error instanceof ForbiddenException
+      )
         throw error;
       logger.error(`Error adding pool member: ${error}`);
       throw new InternalServerException('Failed to add pool member.');

@@ -3,6 +3,7 @@ import crypto from 'crypto';
 import { v4 as uuidv4 } from 'uuid';
 import { IWebhookRepository } from './webhooks.repository';
 import { WebhookEventType } from './webhooks.interface';
+import { assertSafeWebhookUrl } from '@/common/utils/ssrf-guard';
 import logger from '@/common/lib/logger';
 
 const RETRY_DELAYS_MS = [60_000, 5 * 60_000, 30 * 60_000]; // 1m, 5m, 30m
@@ -57,6 +58,30 @@ export class WebhookDispatcher {
     const body = JSON.stringify(payload);
     const signature = this.sign(body, secret);
 
+    // Defense-in-depth SSRF check before each delivery (re-check on retries too)
+    assertSafeWebhookUrl(url)
+      .then(() => this.doFetch(deliveryId, url, body, signature, payload, secret, attempt))
+      .catch((err) => {
+        logger.warn(`Webhook delivery blocked (SSRF guard): ${err.message}`);
+        this.webhookRepository
+          .updateDelivery(deliveryId, {
+            status: 'failed',
+            attempts: attempt + 1,
+            lastAttemptedAt: new Date(),
+          })
+          .catch(() => {});
+      });
+  }
+
+  private doFetch(
+    deliveryId: string,
+    url: string,
+    body: string,
+    signature: string,
+    payload: Record<string, unknown>,
+    secret: string,
+    attempt: number,
+  ): void {
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), TIMEOUT_MS);
 
