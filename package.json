@@ -1,0 +1,73 @@
+{
+  "name": "billbot-backend",
+  "version": "1.0.0",
+  "description": "BillBot — shared expense splitting and settlement platform",
+  "main": "dist/index.js",
+  "scripts": {
+    "dev": "nodemon --exec ts-node -r tsconfig-paths/register src/index.ts",
+    "build": "tsc",
+    "start": "node dist/index.js",
+    "lint": "eslint src --ext .ts",
+    "lint:fix": "eslint src --ext .ts --fix",
+    "format": "prettier --write \"src/**/*.ts\"",
+    "db:generate": "drizzle-kit generate",
+    "db:migrate": "ts-node -r tsconfig-paths/register src/common/lib/database/migrate.ts",
+    "db:push": "drizzle-kit push",
+    "db:studio": "drizzle-kit studio",
+    "prepare": "husky"
+  },
+  "dependencies": {
+    "apple-signin-auth": "^1.7.6",
+    "bcrypt": "^5.1.1",
+    "cloudinary": "^2.9.0",
+    "cors": "^2.8.5",
+    "dotenv": "^16.4.5",
+    "drizzle-orm": "^0.30.10",
+    "express": "^5.0.0",
+    "google-auth-library": "^9.11.0",
+    "helmet": "^7.1.0",
+    "jsonwebtoken": "^9.0.2",
+    "multer": "^1.4.5-lts.1",
+    "nodemailer": "^6.9.14",
+    "openai": "^4.52.7",
+    "pg": "^8.12.0",
+    "reflect-metadata": "^0.2.2",
+    "sharp": "^0.33.5",
+    "tsyringe": "^4.8.0",
+    "uuid": "^10.0.0",
+    "winston": "^3.13.0",
+    "zod": "^3.23.8"
+  },
+  "devDependencies": {
+    "@types/bcrypt": "^5.0.2",
+    "@types/cors": "^2.8.17",
+    "@types/express": "^5.0.0",
+    "@types/jsonwebtoken": "^9.0.6",
+    "@types/multer": "^1.4.11",
+    "@types/node": "^20.14.14",
+    "@types/nodemailer": "^6.4.15",
+    "@types/pg": "^8.11.6",
+    "@types/swagger-jsdoc": "^6.0.4",
+    "@types/swagger-ui-express": "^4.1.7",
+    "@types/uuid": "^10.0.0",
+    "@typescript-eslint/eslint-plugin": "^7.18.0",
+    "@typescript-eslint/parser": "^7.18.0",
+    "drizzle-kit": "^0.21.4",
+    "eslint": "^8.57.0",
+    "husky": "^9.1.1",
+    "lint-staged": "^15.2.7",
+    "nodemon": "^3.1.4",
+    "prettier": "^3.3.3",
+    "swagger-jsdoc": "^6.2.8",
+    "swagger-ui-express": "^5.0.1",
+    "ts-node": "^10.9.2",
+    "tsconfig-paths": "^4.2.0",
+    "typescript": "^5.5.4"
+  },
+  "lint-staged": {
+    "*.ts": [
+      "eslint --fix",
+      "prettier --write"
+    ]
+  }
+}

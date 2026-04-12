@@ -1,0 +1,236 @@
+import { inject, injectable } from 'tsyringe';
+import { v4 as uuidv4 } from 'uuid';
+import { IExpenseRepository } from './expenses.repository';
+import { IExpense, IParsedReceipt } from './expenses.interface';
+import { CreateExpenseDTO, ExpenseResponseDTO } from './expenses.dto';
+import { IPagination } from '@/common/types/interface';
+import { IPoolRepository } from '@/modules/pools/pools.repository';
+import { WebhookDispatcher } from '@/modules/webhooks/webhooks.dispatcher';
+import { uploadFile } from '@/common/lib/storage';
+import { parseReceipt } from '@/common/lib/ai-parser';
+import {
+  BadRequestException,
+  ForbiddenException,
+  InternalServerException,
+  ResourceNotFoundException,
+} from '@/common/exception';
+import logger from '@/common/lib/logger';
+
+export interface IExpenseService {
+  createExpense(
+    poolId: string,
+    userId: string,
+    data: CreateExpenseDTO,
+    file?: Express.Multer.File,
+  ): Promise<ExpenseResponseDTO>;
+  parseReceipt(
+    file: Express.Multer.File,
+  ): Promise<{ parsed: IParsedReceipt | null; receipt_url: string }>;
+  listExpenses(
+    poolId: string,
+    userId: string,
+    page: number,
+    limit: number,
+  ): Promise<IPagination<ExpenseResponseDTO>>;
+  getExpense(
+    expenseId: string,
+    userId: string,
+  ): Promise<ExpenseResponseDTO & { splits: unknown[] }>;
+  deleteExpense(expenseId: string, userId: string): Promise<{ success: boolean; message: string }>;
+}
+
+@injectable()
+class ExpenseService implements IExpenseService {
+  constructor(
+    @inject('IExpenseRepository') private expenseRepository: IExpenseRepository,
+    @inject('IPoolRepository') private poolRepository: IPoolRepository,
+    @inject(WebhookDispatcher) private webhookDispatcher: WebhookDispatcher,
+  ) {}
+
+  async createExpense(
+    poolId: string,
+    userId: string,
+    data: CreateExpenseDTO,
+    file?: Express.Multer.File,
+  ): Promise<ExpenseResponseDTO> {
+    try {
+      const pool = await this.poolRepository.findById(poolId);
+      if (!pool) throw new ResourceNotFoundException('Pool not found.');
+
+      const member = await this.poolRepository.getMember(poolId, userId);
+      if (!member) throw new ForbiddenException('You are not a member of this pool.');
+
+      // Upload receipt if provided (non-blocking if parse fails)
+      let receiptUrl: string | null = null;
+      if (file) {
+        const path = `receipts/${poolId}/${uuidv4()}-${file.originalname}`;
+        receiptUrl = await uploadFile('billbot/receipts', path, file.buffer, file.mimetype);
+      }
+
+      const expense = await this.expenseRepository.create({
+        id: uuidv4(),
+        poolId,
+        paidBy: userId,
+        amount: data.amount.toString(),
+        currency: data.currency,
+        description: data.description ?? null,
+        category: data.category ?? null,
+        receiptUrl,
+      });
+
+      // Calculate equal splits among all pool members
+      const members = await this.poolRepository.getMembers(poolId);
+      const splitAmount = (data.amount / members.length).toFixed(2);
+
+      for (const m of members) {
+        await this.expenseRepository.createSplit({
+          id: uuidv4(),
+          expenseId: expense.id,
+          owedBy: m.userId,
+          amount: splitAmount,
+        });
+      }
+
+      this.webhookDispatcher.dispatch(pool.groupId, 'expense.created', {
+        expense_id: expense.id,
+        pool_id: poolId,
+        amount: data.amount,
+      });
+
+      return this.mapToDTO(expense);
+    } catch (error) {
+      if (error instanceof ResourceNotFoundException || error instanceof ForbiddenException)
+        throw error;
+      logger.error(`Error creating expense: ${error}`);
+      throw new InternalServerException('Failed to create expense.');
+    }
+  }
+
+  async parseReceipt(
+    file: Express.Multer.File,
+  ): Promise<{ parsed: IParsedReceipt | null; receipt_url: string }> {
+    // Always store the image first — parsing is non-blocking
+    const path = `receipts/parse/${uuidv4()}-${file.originalname}`;
+    let receiptUrl = '';
+    try {
+      receiptUrl = await uploadFile('billbot/receipts', path, file.buffer, file.mimetype);
+    } catch (err) {
+      logger.warn(`Receipt upload failed during parse: ${err}`);
+    }
+
+    // Attempt AI parse — never fail the request if this fails
+    const parsed = await parseReceipt(file.buffer, file.mimetype);
+
+    return { parsed, receipt_url: receiptUrl };
+  }
+
+  async listExpenses(
+    poolId: string,
+    userId: string,
+    page: number,
+    limit: number,
+  ): Promise<IPagination<ExpenseResponseDTO>> {
+    try {
+      const member = await this.poolRepository.getMember(poolId, userId);
+      if (!member) throw new ForbiddenException('You are not a member of this pool.');
+
+      const allExpenses = await this.expenseRepository.findByPool(poolId);
+      const total = allExpenses.length;
+      const start = (page - 1) * limit;
+      const paged = allExpenses.slice(start, start + limit);
+
+      return {
+        page,
+        limit,
+        total_items: total,
+        pages: Math.ceil(total / limit),
+        items: paged.map((e) => this.mapToDTO(e)),
+      };
+    } catch (error) {
+      if (error instanceof ForbiddenException) throw error;
+      logger.error(`Error listing expenses: ${error}`);
+      throw new InternalServerException('Failed to list expenses.');
+    }
+  }
+
+  async getExpense(
+    expenseId: string,
+    userId: string,
+  ): Promise<ExpenseResponseDTO & { splits: unknown[] }> {
+    try {
+      const expense = await this.expenseRepository.findById(expenseId);
+      if (!expense) throw new ResourceNotFoundException('Expense not found.');
+
+      const member = await this.poolRepository.getMember(expense.poolId, userId);
+      if (!member) throw new ForbiddenException('You are not a member of this pool.');
+
+      const splits = await this.expenseRepository.getSplitsByExpense(expenseId);
+      return { ...this.mapToDTO(expense), splits };
+    } catch (error) {
+      if (error instanceof ResourceNotFoundException || error instanceof ForbiddenException)
+        throw error;
+      logger.error(`Error fetching expense: ${error}`);
+      throw new InternalServerException('Failed to fetch expense.');
+    }
+  }
+
+  async deleteExpense(
+    expenseId: string,
+    userId: string,
+  ): Promise<{ success: boolean; message: string }> {
+    try {
+      const expense = await this.expenseRepository.findById(expenseId);
+      if (!expense) throw new ResourceNotFoundException('Expense not found.');
+
+      // Only payer or admin can delete
+      const member = await this.poolRepository.getMember(expense.poolId, userId);
+      if (!member) throw new ForbiddenException('You are not a member of this pool.');
+
+      if (expense.paidBy !== userId) {
+        throw new ForbiddenException('Only the payer can delete an expense.');
+      }
+
+      const hasSettled = await this.expenseRepository.hasSettledSplits(expenseId);
+      if (hasSettled) {
+        throw new BadRequestException('Cannot delete an expense with settled splits.');
+      }
+
+      const pool = await this.poolRepository.findById(expense.poolId);
+      await this.expenseRepository.delete(expenseId);
+
+      if (pool) {
+        this.webhookDispatcher.dispatch(pool.groupId, 'expense.deleted', {
+          expense_id: expenseId,
+          pool_id: expense.poolId,
+        });
+      }
+
+      return { success: true, message: 'Expense deleted successfully.' };
+    } catch (error) {
+      if (
+        error instanceof ResourceNotFoundException ||
+        error instanceof ForbiddenException ||
+        error instanceof BadRequestException
+      )
+        throw error;
+      logger.error(`Error deleting expense: ${error}`);
+      throw new InternalServerException('Failed to delete expense.');
+    }
+  }
+
+  private mapToDTO(expense: IExpense): ExpenseResponseDTO {
+    return {
+      id: expense.id,
+      pool_id: expense.poolId,
+      paid_by: expense.paidBy,
+      amount: expense.amount,
+      currency: expense.currency,
+      description: expense.description,
+      category: expense.category,
+      receipt_url: expense.receiptUrl,
+      created_at: expense.createdAt,
+    };
+  }
+}
+
+export default ExpenseService;
