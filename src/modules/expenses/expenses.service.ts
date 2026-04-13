@@ -99,16 +99,43 @@ class ExpenseService implements IExpenseService {
         nextOccurrenceAt,
       });
 
-      // Calculate equal splits among all pool members
+      // Build splits — exact if caller provided them, otherwise equal among all members
       const members = await this.poolRepository.getMembers(poolId);
-      const splitAmount = (data.amount / members.length).toFixed(2);
 
-      for (const m of members) {
+      type SplitEntry = { userId: string; amount: string };
+      let resolvedSplits: SplitEntry[];
+
+      if (data.splits && data.splits.length > 0) {
+        const memberIds = new Set(members.map((m) => m.userId));
+        const outsiders = data.splits.filter((s) => !memberIds.has(s.userId));
+        if (outsiders.length > 0) {
+          throw new BadRequestException(
+            `The following users are not members of this pool: ${outsiders.map((u) => u.userId).join(', ')}`,
+          );
+        }
+
+        const splitTotal = data.splits.reduce((sum, s) => sum + s.amount, 0);
+        if (Math.abs(splitTotal - data.amount) > 0.01) {
+          throw new BadRequestException(
+            `Split amounts (${splitTotal.toFixed(2)}) must sum to the expense total (${data.amount.toFixed(2)}).`,
+          );
+        }
+
+        resolvedSplits = data.splits.map((s) => ({
+          userId: s.userId,
+          amount: s.amount.toFixed(2),
+        }));
+      } else {
+        const splitAmount = (data.amount / members.length).toFixed(2);
+        resolvedSplits = members.map((m) => ({ userId: m.userId, amount: splitAmount }));
+      }
+
+      for (const s of resolvedSplits) {
         await this.expenseRepository.createSplit({
           id: uuidv4(),
           expenseId: expense.id,
-          owedBy: m.userId,
-          amount: splitAmount,
+          owedBy: s.userId,
+          amount: s.amount,
         });
       }
 

@@ -113,7 +113,7 @@ const options: swaggerJsdoc.Options = {
       },
     },
   },
-  apis: [path.join(process.cwd(), 'src/modules/**/*.controller.ts')],
+  apis: [path.join(process.cwd(), 'src/modules/**/*controller.ts')],
 };
 
 export function setupSwagger(app: Express): void {
@@ -123,7 +123,26 @@ export function setupSwagger(app: Express): void {
   }
 
   const spec = swaggerJsdoc(options);
-  app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(spec, { explorer: true }));
+
+  app.get('/api-docs.init.js', (_req, res) => {
+    res.setHeader('Content-Type', 'application/javascript');
+    res.send(`
+      window.addEventListener('load', function () {
+        var link = document.createElement('a');
+        link.href = '/api-docs.json';
+        link.download = 'billbot-api.json';
+        link.textContent = 'Download OpenAPI JSON';
+        link.style.cssText = 'position:fixed;top:12px;right:16px;z-index:9999;background:#49cc90;color:#fff;padding:6px 14px;border-radius:4px;font-size:13px;font-weight:bold;text-decoration:none;font-family:sans-serif;';
+        document.body.appendChild(link);
+      });
+    `);
+  });
+
+  app.use(
+    '/api-docs',
+    swaggerUi.serve,
+    swaggerUi.setup(spec, { explorer: true, customJs: '/api-docs.init.js' }),
+  );
   app.get('/api-docs.json', (_req, res) => {
     res.setHeader('Content-Type', 'application/json');
     res.send(spec);

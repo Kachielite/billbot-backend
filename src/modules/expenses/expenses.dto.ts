@@ -1,6 +1,11 @@
 import { z } from 'zod';
 import { Currency, RecurrenceFrequency } from './expenses.enum';
 
+export const SplitEntrySchema = z.object({
+  userId: z.string().uuid('Each split userId must be a valid UUID'),
+  amount: z.coerce.number().positive('Each split amount must be positive'),
+});
+
 export const CreateExpenseSchema = z
   .object({
     amount: z.coerce.number().positive('Amount must be positive'),
@@ -14,6 +19,12 @@ export const CreateExpenseSchema = z
       .string()
       .datetime({ message: 'recurrenceEndDate must be an ISO 8601 date-time string' })
       .optional(),
+    /**
+     * Optional exact splits. When provided, must cover every member being split
+     * and amounts must sum to `amount` (±0.01 tolerance for floating-point).
+     * Omit to use equal split among all pool members.
+     */
+    splits: z.array(SplitEntrySchema).optional(),
   })
   .refine((d) => !d.isRecurring || !!d.recurrenceFrequency, {
     message: 'recurrenceFrequency is required when isRecurring is true',

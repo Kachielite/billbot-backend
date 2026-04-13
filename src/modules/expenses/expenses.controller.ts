@@ -50,7 +50,9 @@ class ExpenseController extends BaseController {
    *   post:
    *     tags: [Expenses]
    *     summary: Log an expense
-   *     description: Creates an expense and auto-calculates equal splits among all pool members
+   *     description: |
+   *       Creates an expense and calculates splits. Pass a `splits` array for exact per-person
+   *       amounts; omit it to split equally among all pool members.
    *     security:
    *       - bearerAuth: []
    *     parameters:
@@ -74,6 +76,12 @@ class ExpenseController extends BaseController {
    *               isRecurring: { type: boolean, default: false, description: 'Mark this expense as recurring' }
    *               recurrenceFrequency: { type: string, enum: [daily, weekly, biweekly, monthly, yearly], description: 'Required when isRecurring is true' }
    *               recurrenceEndDate: { type: string, format: date-time, description: 'Optional ISO date after which no more instances are generated' }
+   *               splits:
+   *                 type: string
+   *                 description: |
+   *                   JSON-encoded array of exact splits, e.g. `[{"userId":"<uuid>","amount":3000},{"userId":"<uuid>","amount":7000}]`.
+   *                   Amounts must sum to `amount` (±0.01). Every userId must be a pool member.
+   *                   Omit to split equally among all pool members.
    *     responses:
    *       '201':
    *         description: Expense created with splits
@@ -121,9 +129,19 @@ class ExpenseController extends BaseController {
           return next(new BadRequestException('File content does not match the declared type.'));
         }
 
+        let rawSplits: unknown = undefined;
+        if (req.body.splits) {
+          try {
+            rawSplits = JSON.parse(req.body.splits as string);
+          } catch {
+            return next(new BadRequestException('splits must be a valid JSON array.'));
+          }
+        }
+
         const parsed = CreateExpenseSchema.safeParse({
           ...req.body,
           amount: Number(req.body.amount),
+          splits: rawSplits,
         });
         if (!parsed.success) {
           return next(
