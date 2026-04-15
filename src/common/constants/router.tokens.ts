@@ -6,6 +6,7 @@ export const ROUTER_TOKENS = {
   POOLS: Symbol.for('PoolsRouter'),
   EXPENSES: Symbol.for('ExpensesRouter'),
   BALANCES: Symbol.for('BalancesRouter'),
+  BALANCES_SUMMARY: Symbol.for('BalancesSummaryRouter'),
   SETTLEMENTS: Symbol.for('SettlementsRouter'),
   WEBHOOKS: Symbol.for('WebhooksRouter'),
   CATEGORIES: Symbol.for('CategoriesRouter'),

@@ -91,3 +91,51 @@ class BalanceController extends BaseController {
 }
 
 export default BalanceController;
+
+/**
+ * @swagger
+ * /balances:
+ *   get:
+ *     tags: [Balances]
+ *     summary: Get the authenticated user's overall balance summary
+ *     description: |
+ *       Returns the total amount the authenticated user owes across all pools
+ *       and the total amount owed to them by others.
+ *     security:
+ *       - bearerAuth: []
+ *     responses:
+ *       '200':
+ *         description: User balance summary
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 totalOwed:
+ *                   type: number
+ *                   description: Total amount the user owes others (unsettled splits)
+ *                 totalOwedToMe:
+ *                   type: number
+ *                   description: Total amount others owe the user (unsettled splits)
+ *                 currency:
+ *                   type: string
+ *                   example: NGN
+ *       '401':
+ *         $ref: '#/components/responses/Unauthorized'
+ */
+@injectable()
+@Controller('/balances')
+export class BalanceSummaryController extends BaseController {
+  constructor(
+    @inject(ROUTER_TOKENS.BALANCES_SUMMARY) router: express.Router,
+    @inject(BalanceService) private readonly balanceService: IBalanceService,
+  ) {
+    super(router);
+  }
+
+  @Get('/')
+  async getUserBalance(req: Request) {
+    const userId = (req as unknown as IAuthenticatedRequest).user?.id as string;
+    return this.balanceService.getUserBalanceSummary(userId);
+  }
+}

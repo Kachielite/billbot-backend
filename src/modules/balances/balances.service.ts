@@ -27,8 +27,15 @@ export interface IBalanceResult {
   memberSummary: IMemberSummary[];
 }
 
+export interface IUserBalanceSummary {
+  totalOwed: number;
+  totalOwedToMe: number;
+  currency: string;
+}
+
 export interface IBalanceService {
   getPoolBalances(poolId: string, userId: string): Promise<IBalanceResult>;
+  getUserBalanceSummary(userId: string): Promise<IUserBalanceSummary>;
 }
 
 @injectable()
@@ -96,6 +103,19 @@ class BalanceService implements IBalanceService {
         throw error;
       logger.error(`Error calculating balances for pool ${poolId}: ${error}`);
       throw new InternalServerException('Failed to calculate balances.');
+    }
+  }
+
+  async getUserBalanceSummary(userId: string): Promise<IUserBalanceSummary> {
+    try {
+      const [totalOwed, totalOwedToMe] = await Promise.all([
+        this.expenseRepository.getTotalOwedByUser(userId),
+        this.expenseRepository.getTotalOwedToUser(userId),
+      ]);
+      return { totalOwed, totalOwedToMe, currency: 'NGN' };
+    } catch (error) {
+      logger.error(`Error calculating balance summary for user ${userId}: ${error}`);
+      throw new InternalServerException('Failed to calculate balance summary.');
     }
   }
 

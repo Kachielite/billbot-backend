@@ -1,5 +1,5 @@
 import { inject, injectable } from 'tsyringe';
-import { eq, and, lte, gte, or, isNull } from 'drizzle-orm';
+import { eq, and, lte, gte, or, isNull, ne, sql } from 'drizzle-orm';
 import Database from '@/common/lib/database';
 import { ExpenseSchema, ExpenseSplitSchema } from './expenses.schema';
 import { IExpense, IExpenseSplit } from './expenses.interface';
@@ -43,6 +43,8 @@ export interface IExpenseRepository {
     id: string,
     data: { nextOccurrenceAt?: Date | null; isRecurring?: boolean },
   ): Promise<void>;
+  getTotalOwedByUser(userId: string): Promise<number>;
+  getTotalOwedToUser(userId: string): Promise<number>;
 }
 
 @injectable()
@@ -180,6 +182,36 @@ class ExpenseRepositoryImpl implements IExpenseRepository {
     if (data.nextOccurrenceAt !== undefined) updateData.nextOccurrenceAt = data.nextOccurrenceAt;
     if (data.isRecurring !== undefined) updateData.isRecurring = data.isRecurring;
     await this.db.client.update(ExpenseSchema).set(updateData).where(eq(ExpenseSchema.id, id));
+  }
+
+  async getTotalOwedByUser(userId: string): Promise<number> {
+    const rows = await this.db.client
+      .select({ total: sql<string>`COALESCE(SUM(${ExpenseSplitSchema.amount}), '0')` })
+      .from(ExpenseSplitSchema)
+      .innerJoin(ExpenseSchema, eq(ExpenseSplitSchema.expenseId, ExpenseSchema.id))
+      .where(
+        and(
+          eq(ExpenseSplitSchema.owedBy, userId),
+          eq(ExpenseSplitSchema.settled, false),
+          ne(ExpenseSchema.paidBy, userId),
+        ),
+      );
+    return parseFloat(rows[0]?.total ?? '0');
+  }
+
+  async getTotalOwedToUser(userId: string): Promise<number> {
+    const rows = await this.db.client
+      .select({ total: sql<string>`COALESCE(SUM(${ExpenseSplitSchema.amount}), '0')` })
+      .from(ExpenseSplitSchema)
+      .innerJoin(ExpenseSchema, eq(ExpenseSplitSchema.expenseId, ExpenseSchema.id))
+      .where(
+        and(
+          eq(ExpenseSchema.paidBy, userId),
+          eq(ExpenseSplitSchema.settled, false),
+          ne(ExpenseSplitSchema.owedBy, userId),
+        ),
+      );
+    return parseFloat(rows[0]?.total ?? '0');
   }
 }
 
