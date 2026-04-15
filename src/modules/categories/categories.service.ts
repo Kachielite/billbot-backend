@@ -17,8 +17,11 @@ class CategoryService implements ICategoryService {
   constructor(@inject('ICategoryRepository') private categoryRepository: ICategoryRepository) {}
 
   async listCategories(): Promise<ICategory[]> {
+    logger.info('Fetching all categories');
     try {
-      return this.categoryRepository.findAll();
+      const categories = await this.categoryRepository.findAll();
+      logger.info(`Found ${categories.length} category/categories`);
+      return categories;
     } catch (error) {
       logger.error(`Error listing categories: ${error}`);
       throw new InternalServerException('Failed to list categories.');
@@ -26,9 +29,14 @@ class CategoryService implements ICategoryService {
   }
 
   async getCategory(id: string): Promise<ICategory> {
+    logger.info(`Fetching category ${id}`);
     try {
       const category = await this.categoryRepository.findById(id);
-      if (!category) throw new ResourceNotFoundException('Category not found.');
+      if (!category) {
+        logger.warn(`Category not found: ${id}`);
+        throw new ResourceNotFoundException('Category not found.');
+      }
+      logger.info(`Category ${id} fetched successfully`);
       return category;
     } catch (error) {
       if (error instanceof ResourceNotFoundException) throw error;

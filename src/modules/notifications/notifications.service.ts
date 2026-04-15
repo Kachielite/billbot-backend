@@ -40,9 +40,11 @@ class NotificationService implements INotificationService {
     body: string,
     metadata: Record<string, unknown> = {},
   ): Promise<void> {
+    logger.info(`Creating notification for user ${userId}, type: ${type}, title: "${title}"`);
     try {
       const data: ICreateNotification = { id: uuidv4(), userId, type, title, body, metadata };
       await this.notificationRepository.create(data);
+      logger.info(`Notification created for user ${userId}`);
     } catch (error) {
       logger.error(`Failed to create notification for user ${userId}: ${error}`);
     }
@@ -53,6 +55,7 @@ class NotificationService implements INotificationService {
     page: number,
     limit: number,
   ): Promise<IPagination<INotification> & { unread: number }> {
+    logger.info(`Listing notifications for user ${userId}, page ${page}, limit ${limit}`);
     try {
       const offset = (page - 1) * limit;
       const [notifications, total, unread] = await Promise.all([
@@ -61,6 +64,9 @@ class NotificationService implements INotificationService {
         this.notificationRepository.countUnreadByUser(userId),
       ]);
 
+      logger.info(
+        `Returning ${notifications.length} of ${total} notification(s) for user ${userId} (${unread} unread)`,
+      );
       return {
         items: notifications,
         total_items: total,
@@ -76,8 +82,10 @@ class NotificationService implements INotificationService {
   }
 
   async markRead(id: string, userId: string): Promise<IGeneralResponse<null>> {
+    logger.info(`Mark notification ${id} as read for user ${userId}`);
     try {
       await this.notificationRepository.markRead(id, userId);
+      logger.info(`Notification ${id} marked as read`);
       return { success: true, message: 'Notification marked as read.', data: null };
     } catch (error) {
       if (error instanceof ResourceNotFoundException) throw error;
@@ -87,8 +95,10 @@ class NotificationService implements INotificationService {
   }
 
   async markAllRead(userId: string): Promise<IGeneralResponse<null>> {
+    logger.info(`Mark all notifications as read for user ${userId}`);
     try {
       await this.notificationRepository.markAllRead(userId);
+      logger.info(`All notifications marked as read for user ${userId}`);
       return { success: true, message: 'All notifications marked as read.', data: null };
     } catch (error) {
       logger.error(`Error marking all notifications read: ${error}`);

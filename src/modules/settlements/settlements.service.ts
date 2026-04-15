@@ -49,17 +49,30 @@ class SettlementService implements ISettlementService {
     data: CreateSettlementDTO,
     proofFile: Express.Multer.File,
   ): Promise<ISettlement> {
+    logger.info(
+      `Create settlement in pool ${poolId} from user ${fromUserId} to ${data.toUserId}, amount: ${data.amount}`,
+    );
     try {
       const pool = await this.poolRepository.findById(poolId);
-      if (!pool) throw new ResourceNotFoundException('Pool not found.');
+      if (!pool) {
+        logger.warn(`Pool not found: ${poolId}`);
+        throw new ResourceNotFoundException('Pool not found.');
+      }
 
       const member = await this.poolRepository.getMember(poolId, fromUserId);
-      if (!member) throw new ForbiddenException('You are not a member of this pool.');
+      if (!member) {
+        logger.warn(`User ${fromUserId} is not a member of pool ${poolId}`);
+        throw new ForbiddenException('You are not a member of this pool.');
+      }
 
       const toMember = await this.poolRepository.getMember(poolId, data.toUserId);
-      if (!toMember) throw new BadRequestException('Recipient is not a member of this pool.');
+      if (!toMember) {
+        logger.warn(`Recipient ${data.toUserId} is not a member of pool ${poolId}`);
+        throw new BadRequestException('Recipient is not a member of this pool.');
+      }
 
       if (fromUserId === data.toUserId) {
+        logger.warn(`User ${fromUserId} attempted to settle with themselves`);
         throw new BadRequestException('Cannot settle with yourself.');
       }
 
@@ -67,7 +80,9 @@ class SettlementService implements ISettlementService {
       const proofPath = `settlements/${poolId}/${uuidv4()}-${proofFile.originalname}`;
       let proofUrl: string | null = null;
       try {
+        logger.info(`Uploading settlement proof for pool ${poolId}`);
         proofUrl = await uploadFile('billbot', proofPath, proofFile.buffer, proofFile.mimetype);
+        logger.info(`Settlement proof uploaded successfully`);
       } catch (err) {
         logger.warn(`Failed to upload settlement proof: ${err}`);
       }
@@ -95,6 +110,7 @@ class SettlementService implements ISettlementService {
         amount: data.amount,
       });
 
+      logger.info(`Settlement ${settlement.id} created in pool ${poolId}`);
       return settlement;
     } catch (error) {
       if (
@@ -109,11 +125,17 @@ class SettlementService implements ISettlementService {
   }
 
   async listSettlements(poolId: string, userId: string): Promise<ISettlement[]> {
+    logger.info(`Listing settlements for pool ${poolId}, requested by user ${userId}`);
     try {
       const member = await this.poolRepository.getMember(poolId, userId);
-      if (!member) throw new ForbiddenException('You are not a member of this pool.');
+      if (!member) {
+        logger.warn(`User ${userId} is not a member of pool ${poolId}`);
+        throw new ForbiddenException('You are not a member of this pool.');
+      }
 
-      return this.settlementRepository.findByPool(poolId);
+      const settlements = await this.settlementRepository.findByPool(poolId);
+      logger.info(`Found ${settlements.length} settlement(s) for pool ${poolId}`);
+      return settlements;
     } catch (error) {
       if (error instanceof ForbiddenException) throw error;
       logger.error(`Error listing settlements: ${error}`);
@@ -122,15 +144,25 @@ class SettlementService implements ISettlementService {
   }
 
   async getSettlement(settlementId: string, userId: string): Promise<ISettlement> {
+    logger.info(`Fetching settlement ${settlementId}, requested by user ${userId}`);
     try {
       const settlement = await this.settlementRepository.findById(settlementId);
-      if (!settlement) throw new ResourceNotFoundException('Settlement not found.');
+      if (!settlement) {
+        logger.warn(`Settlement not found: ${settlementId}`);
+        throw new ResourceNotFoundException('Settlement not found.');
+      }
 
       if (settlement.poolId) {
         const member = await this.poolRepository.getMember(settlement.poolId, userId);
-        if (!member) throw new ForbiddenException('Access denied.');
+        if (!member) {
+          logger.warn(
+            `User ${userId} is not a member of pool ${settlement.poolId} — access denied`,
+          );
+          throw new ForbiddenException('Access denied.');
+        }
       }
 
+      logger.info(`Settlement ${settlementId} fetched successfully`);
       return settlement;
     } catch (error) {
       if (error instanceof ResourceNotFoundException || error instanceof ForbiddenException)
@@ -141,15 +173,23 @@ class SettlementService implements ISettlementService {
   }
 
   async confirmSettlement(settlementId: string, userId: string): Promise<IGeneralResponse<null>> {
+    logger.info(`Confirm settlement ${settlementId} requested by user ${userId}`);
     try {
       const settlement = await this.settlementRepository.findById(settlementId);
-      if (!settlement) throw new ResourceNotFoundException('Settlement not found.');
+      if (!settlement) {
+        logger.warn(`Settlement not found: ${settlementId}`);
+        throw new ResourceNotFoundException('Settlement not found.');
+      }
 
       if (settlement.toUser !== userId) {
+        logger.warn(
+          `User ${userId} is not the payee for settlement ${settlementId} — confirm denied`,
+        );
         throw new ForbiddenException('Only the payee can confirm a settlement.');
       }
 
       if (settlement.status !== 'pending_verification') {
+        logger.warn(`Settlement ${settlementId} is already ${settlement.status} — cannot confirm`);
         throw new BadRequestException(`Settlement is already ${settlement.status}.`);
       }
 
@@ -160,6 +200,7 @@ class SettlementService implements ISettlementService {
 
       // Mark splits as settled greedily
       if (settlement.poolId && settlement.fromUser && settlement.toUser) {
+        logger.info(`Marking splits as settled for settlement ${settlementId}`);
         await this.markSplitsAsSettled(
           settlement.poolId,
           settlement.fromUser,
@@ -175,6 +216,7 @@ class SettlementService implements ISettlementService {
         }
       }
 
+      logger.info(`Settlement ${settlementId} confirmed by user ${userId}`);
       return {
         success: true,
         message: 'Settlement confirmed. Splits marked as settled.',
@@ -197,15 +239,23 @@ class SettlementService implements ISettlementService {
     userId: string,
     data: DisputeSettlementDTO,
   ): Promise<IGeneralResponse<null>> {
+    logger.info(`Dispute settlement ${settlementId} requested by user ${userId}`);
     try {
       const settlement = await this.settlementRepository.findById(settlementId);
-      if (!settlement) throw new ResourceNotFoundException('Settlement not found.');
+      if (!settlement) {
+        logger.warn(`Settlement not found: ${settlementId}`);
+        throw new ResourceNotFoundException('Settlement not found.');
+      }
 
       if (settlement.toUser !== userId) {
+        logger.warn(
+          `User ${userId} is not the payee for settlement ${settlementId} — dispute denied`,
+        );
         throw new ForbiddenException('Only the payee can dispute a settlement.');
       }
 
       if (settlement.status !== 'pending_verification') {
+        logger.warn(`Settlement ${settlementId} is already ${settlement.status} — cannot dispute`);
         throw new BadRequestException(`Settlement is already ${settlement.status}.`);
       }
 
@@ -224,6 +274,7 @@ class SettlementService implements ISettlementService {
         }
       }
 
+      logger.info(`Settlement ${settlementId} disputed by user ${userId}`);
       return { success: true, message: 'Settlement disputed.', data: null };
     } catch (error) {
       if (

@@ -42,6 +42,9 @@ class InviteService implements IInviteService {
   ) {}
 
   async createInvite(groupId: string, invitedBy: string, data: CreateInviteDTO): Promise<IInvite> {
+    logger.info(
+      `Create invite for group ${groupId} by user ${invitedBy} (email: ${data.email ?? 'none'}, phone: ${data.phone ?? 'none'})`,
+    );
     try {
       const [group, member, inviter] = await Promise.all([
         this.groupRepository.findById(groupId),
@@ -49,8 +52,14 @@ class InviteService implements IInviteService {
         this.userRepository.findById(invitedBy),
       ]);
 
-      if (!group) throw new ResourceNotFoundException('Group not found.');
-      if (!member) throw new ForbiddenException('You must be a group member to invite others.');
+      if (!group) {
+        logger.warn(`Group not found: ${groupId}`);
+        throw new ResourceNotFoundException('Group not found.');
+      }
+      if (!member) {
+        logger.warn(`User ${invitedBy} is not a member of group ${groupId} — invite denied`);
+        throw new ForbiddenException('You must be a group member to invite others.');
+      }
 
       const expiresAt = new Date(Date.now() + INVITE_EXPIRES_DAYS * 24 * 60 * 60 * 1000);
       const token = generateToken(32);
@@ -80,6 +89,7 @@ class InviteService implements IInviteService {
 
         if (existingUser) {
           // User is on the platform — send an in-app notification
+          logger.info(`Sending in-app notification to existing user ${existingUser.id} for invite`);
           this.notificationService
             .notify(
               existingUser.id,
@@ -91,6 +101,7 @@ class InviteService implements IInviteService {
             .catch(() => {}); // fire-and-forget
         } else {
           // User is not on the platform — send an email invitation
+          logger.info(`Sending email invite to ${data.email} for group ${groupId}`);
           const { subject, html } = buildInviteEmail({
             inviterName,
             groupName: group.name,
@@ -103,6 +114,7 @@ class InviteService implements IInviteService {
         // Phone-only invite: check if a user with that phone exists for in-app notification
         const existingUser = await this.userRepository.findByPhone(data.phone);
         if (existingUser) {
+          logger.info(`Sending in-app notification to user ${existingUser.id} (phone invite)`);
           this.notificationService
             .notify(
               existingUser.id,
@@ -116,6 +128,7 @@ class InviteService implements IInviteService {
         // Phone-only invites to unknown users are handled via SMS (out of scope for now)
       }
 
+      logger.info(`Invite ${invite.id} created for group ${groupId} by user ${invitedBy}`);
       return invite;
     } catch (error) {
       if (error instanceof ResourceNotFoundException || error instanceof ForbiddenException)
@@ -126,13 +139,17 @@ class InviteService implements IInviteService {
   }
 
   async getPendingInvites(groupId: string, userId: string): Promise<IInvite[]> {
+    logger.info(`Fetching pending invites for group ${groupId}, requested by user ${userId}`);
     try {
       const member = await this.groupRepository.getMember(groupId, userId);
       if (!member || member.role !== 'admin') {
+        logger.warn(`User ${userId} is not an admin of group ${groupId} — view invites denied`);
         throw new ForbiddenException('Only admins can view pending invites.');
       }
 
-      return this.inviteRepository.findPendingByGroup(groupId);
+      const invites = await this.inviteRepository.findPendingByGroup(groupId);
+      logger.info(`Found ${invites.length} pending invite(s) for group ${groupId}`);
+      return invites;
     } catch (error) {
       if (error instanceof ForbiddenException) throw error;
       logger.error(`Error fetching invites: ${error}`);
@@ -145,17 +162,23 @@ class InviteService implements IInviteService {
     inviteId: string,
     userId: string,
   ): Promise<IGeneralResponse<null>> {
+    logger.info(`Cancel invite ${inviteId} in group ${groupId} requested by user ${userId}`);
     try {
       const member = await this.groupRepository.getMember(groupId, userId);
       if (!member || member.role !== 'admin') {
+        logger.warn(`User ${userId} is not an admin of group ${groupId} — cancel invite denied`);
         throw new ForbiddenException('Only admins can cancel invites.');
       }
 
       const invites = await this.inviteRepository.findPendingByGroup(groupId);
       const invite = invites.find((i) => i.id === inviteId);
-      if (!invite) throw new ResourceNotFoundException('Invite not found.');
+      if (!invite) {
+        logger.warn(`Invite ${inviteId} not found in group ${groupId}`);
+        throw new ResourceNotFoundException('Invite not found.');
+      }
 
       await this.inviteRepository.delete(inviteId);
+      logger.info(`Invite ${inviteId} cancelled by user ${userId}`);
       return { success: true, message: 'Invite cancelled.', data: null };
     } catch (error) {
       if (error instanceof ForbiddenException || error instanceof ResourceNotFoundException)
@@ -166,15 +189,21 @@ class InviteService implements IInviteService {
   }
 
   async joinByToken(token: string, userId: string): Promise<IGeneralResponse<null>> {
+    logger.info(`User ${userId} attempting to join group via invite token`);
     try {
       const invite = await this.inviteRepository.findByToken(token);
-      if (!invite) throw new ResourceNotFoundException('Invite not found.');
+      if (!invite) {
+        logger.warn(`Invite not found for token`);
+        throw new ResourceNotFoundException('Invite not found.');
+      }
 
       if (invite.status !== 'pending') {
+        logger.warn(`Invite ${invite.id} is already ${invite.status} — join denied`);
         throw new BadRequestException('This invite has already been used or expired.');
       }
 
       if (new Date() > invite.expiresAt) {
+        logger.warn(`Invite ${invite.id} has expired`);
         await this.inviteRepository.updateStatus(invite.id, 'expired');
         throw new BadRequestException('This invite has expired.');
       }
@@ -182,6 +211,7 @@ class InviteService implements IInviteService {
       // Check already a member
       const existing = await this.groupRepository.getMember(invite.groupId, userId);
       if (existing) {
+        logger.warn(`User ${userId} is already a member of group ${invite.groupId}`);
         throw new ConflictException('You are already a member of this group.');
       }
 
@@ -199,6 +229,7 @@ class InviteService implements IInviteService {
       // Notify the person who sent the invite that it was accepted
       if (invite.invitedBy) {
         const joiner = await this.userRepository.findById(userId);
+        logger.info(`Notifying inviter ${invite.invitedBy} that user ${userId} joined`);
         this.notificationService
           .notify(
             invite.invitedBy,
@@ -210,6 +241,7 @@ class InviteService implements IInviteService {
           .catch(() => {});
       }
 
+      logger.info(`User ${userId} joined group ${invite.groupId} via invite ${invite.id}`);
       return { success: true, message: 'You have joined the group.', data: null };
     } catch (error) {
       if (

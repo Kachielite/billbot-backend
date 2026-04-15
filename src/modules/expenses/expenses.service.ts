@@ -57,24 +57,38 @@ class ExpenseService implements IExpenseService {
     data: CreateExpenseDTO,
     file?: Express.Multer.File,
   ): Promise<ExpenseResponseDTO> {
+    logger.info(
+      `Creating expense in pool ${poolId} by user ${userId}, amount: ${data.amount} ${data.currency}`,
+    );
     try {
       const pool = await this.poolRepository.findById(poolId);
-      if (!pool) throw new ResourceNotFoundException('Pool not found.');
+      if (!pool) {
+        logger.warn(`Pool not found: ${poolId}`);
+        throw new ResourceNotFoundException('Pool not found.');
+      }
 
       const member = await this.poolRepository.getMember(poolId, userId);
-      if (!member) throw new ForbiddenException('You are not a member of this pool.');
+      if (!member) {
+        logger.warn(`User ${userId} is not a member of pool ${poolId}`);
+        throw new ForbiddenException('You are not a member of this pool.');
+      }
 
       // Validate categoryId if provided
       if (data.categoryId) {
         const category = await this.categoryRepository.findById(data.categoryId);
-        if (!category) throw new BadRequestException('Invalid categoryId — category not found.');
+        if (!category) {
+          logger.warn(`Invalid categoryId: ${data.categoryId}`);
+          throw new BadRequestException('Invalid categoryId — category not found.');
+        }
       }
 
       // Upload receipt if provided (non-blocking if parse fails)
       let receiptUrl: string | null = null;
       if (file) {
+        logger.info(`Uploading receipt for expense in pool ${poolId}`);
         const path = `receipts/${poolId}/${uuidv4()}-${file.originalname}`;
         receiptUrl = await uploadFile('billbot/receipts', path, file.buffer, file.mimetype);
+        logger.info(`Receipt uploaded successfully`);
       }
 
       const now = new Date();
@@ -106,9 +120,13 @@ class ExpenseService implements IExpenseService {
       let resolvedSplits: SplitEntry[];
 
       if (data.splits && data.splits.length > 0) {
+        logger.info(`Using exact splits for expense ${expense.id}`);
         const memberIds = new Set(members.map((m) => m.userId));
         const outsiders = data.splits.filter((s) => !memberIds.has(s.userId));
         if (outsiders.length > 0) {
+          logger.warn(
+            `Split contains non-pool members: ${outsiders.map((u) => u.userId).join(', ')}`,
+          );
           throw new BadRequestException(
             `The following users are not members of this pool: ${outsiders.map((u) => u.userId).join(', ')}`,
           );
@@ -116,6 +134,7 @@ class ExpenseService implements IExpenseService {
 
         const splitTotal = data.splits.reduce((sum, s) => sum + s.amount, 0);
         if (Math.abs(splitTotal - data.amount) > 0.01) {
+          logger.warn(`Split total ${splitTotal} does not match expense amount ${data.amount}`);
           throw new BadRequestException(
             `Split amounts (${splitTotal.toFixed(2)}) must sum to the expense total (${data.amount.toFixed(2)}).`,
           );
@@ -126,6 +145,7 @@ class ExpenseService implements IExpenseService {
           amount: s.amount.toFixed(2),
         }));
       } else {
+        logger.info(`Splitting expense ${expense.id} equally among ${members.length} member(s)`);
         const splitAmount = (data.amount / members.length).toFixed(2);
         resolvedSplits = members.map((m) => ({ userId: m.userId, amount: splitAmount }));
       }
@@ -145,6 +165,7 @@ class ExpenseService implements IExpenseService {
         amount: data.amount,
       });
 
+      logger.info(`Expense ${expense.id} created successfully in pool ${poolId}`);
       return this.mapToDTO(expense);
     } catch (error) {
       if (error instanceof ResourceNotFoundException || error instanceof ForbiddenException)
@@ -157,17 +178,20 @@ class ExpenseService implements IExpenseService {
   async parseReceipt(
     file: Express.Multer.File,
   ): Promise<{ parsed: IParsedReceipt | null; receipt_url: string }> {
+    logger.info(`Receipt parse request received for file: ${file.originalname}`);
     // Always store the image first — parsing is non-blocking
     const path = `receipts/parse/${uuidv4()}-${file.originalname}`;
     let receiptUrl = '';
     try {
       receiptUrl = await uploadFile('billbot/receipts', path, file.buffer, file.mimetype);
+      logger.info(`Receipt uploaded for parsing: ${receiptUrl}`);
     } catch (err) {
       logger.warn(`Receipt upload failed during parse: ${err}`);
     }
 
     // Attempt AI parse — never fail the request if this fails
     const parsed = await parseReceipt(file.buffer, file.mimetype);
+    logger.info(`Receipt parse ${parsed ? 'succeeded' : 'returned no result'}`);
 
     return { parsed, receipt_url: receiptUrl };
   }
@@ -178,15 +202,22 @@ class ExpenseService implements IExpenseService {
     page: number,
     limit: number,
   ): Promise<IPagination<ExpenseResponseDTO>> {
+    logger.info(
+      `Listing expenses for pool ${poolId}, page ${page}, limit ${limit}, requested by user ${userId}`,
+    );
     try {
       const member = await this.poolRepository.getMember(poolId, userId);
-      if (!member) throw new ForbiddenException('You are not a member of this pool.');
+      if (!member) {
+        logger.warn(`User ${userId} is not a member of pool ${poolId}`);
+        throw new ForbiddenException('You are not a member of this pool.');
+      }
 
       const allExpenses = await this.expenseRepository.findByPool(poolId);
       const total = allExpenses.length;
       const start = (page - 1) * limit;
       const paged = allExpenses.slice(start, start + limit);
 
+      logger.info(`Returning ${paged.length} of ${total} expense(s) for pool ${poolId}`);
       return {
         page,
         limit,
@@ -205,14 +236,22 @@ class ExpenseService implements IExpenseService {
     expenseId: string,
     userId: string,
   ): Promise<ExpenseResponseDTO & { splits: unknown[] }> {
+    logger.info(`Fetching expense ${expenseId}, requested by user ${userId}`);
     try {
       const expense = await this.expenseRepository.findById(expenseId);
-      if (!expense) throw new ResourceNotFoundException('Expense not found.');
+      if (!expense) {
+        logger.warn(`Expense not found: ${expenseId}`);
+        throw new ResourceNotFoundException('Expense not found.');
+      }
 
       const member = await this.poolRepository.getMember(expense.poolId, userId);
-      if (!member) throw new ForbiddenException('You are not a member of this pool.');
+      if (!member) {
+        logger.warn(`User ${userId} is not a member of pool ${expense.poolId}`);
+        throw new ForbiddenException('You are not a member of this pool.');
+      }
 
       const splits = await this.expenseRepository.getSplitsByExpense(expenseId);
+      logger.info(`Expense ${expenseId} fetched with ${splits.length} split(s)`);
       return { ...this.mapToDTO(expense), splits };
     } catch (error) {
       if (error instanceof ResourceNotFoundException || error instanceof ForbiddenException)
@@ -226,20 +265,29 @@ class ExpenseService implements IExpenseService {
     expenseId: string,
     userId: string,
   ): Promise<{ success: boolean; message: string }> {
+    logger.info(`Delete expense ${expenseId} requested by user ${userId}`);
     try {
       const expense = await this.expenseRepository.findById(expenseId);
-      if (!expense) throw new ResourceNotFoundException('Expense not found.');
+      if (!expense) {
+        logger.warn(`Expense not found: ${expenseId}`);
+        throw new ResourceNotFoundException('Expense not found.');
+      }
 
       // Only payer or admin can delete
       const member = await this.poolRepository.getMember(expense.poolId, userId);
-      if (!member) throw new ForbiddenException('You are not a member of this pool.');
+      if (!member) {
+        logger.warn(`User ${userId} is not a member of pool ${expense.poolId}`);
+        throw new ForbiddenException('You are not a member of this pool.');
+      }
 
       if (expense.paidBy !== userId) {
+        logger.warn(`User ${userId} is not the payer for expense ${expenseId} — delete denied`);
         throw new ForbiddenException('Only the payer can delete an expense.');
       }
 
       const hasSettled = await this.expenseRepository.hasSettledSplits(expenseId);
       if (hasSettled) {
+        logger.warn(`Expense ${expenseId} has settled splits — delete denied`);
         throw new BadRequestException('Cannot delete an expense with settled splits.');
       }
 
@@ -253,6 +301,7 @@ class ExpenseService implements IExpenseService {
         });
       }
 
+      logger.info(`Expense ${expenseId} deleted successfully by user ${userId}`);
       return { success: true, message: 'Expense deleted successfully.' };
     } catch (error) {
       if (
@@ -267,18 +316,29 @@ class ExpenseService implements IExpenseService {
   }
 
   async cancelRecurrence(expenseId: string, userId: string): Promise<IGeneralResponse<null>> {
+    logger.info(`Cancel recurrence for expense ${expenseId} requested by user ${userId}`);
     try {
       const expense = await this.expenseRepository.findById(expenseId);
-      if (!expense) throw new ResourceNotFoundException('Expense not found.');
+      if (!expense) {
+        logger.warn(`Expense not found: ${expenseId}`);
+        throw new ResourceNotFoundException('Expense not found.');
+      }
 
       const member = await this.poolRepository.getMember(expense.poolId, userId);
-      if (!member) throw new ForbiddenException('You are not a member of this pool.');
+      if (!member) {
+        logger.warn(`User ${userId} is not a member of pool ${expense.poolId}`);
+        throw new ForbiddenException('You are not a member of this pool.');
+      }
 
       if (expense.paidBy !== userId) {
+        logger.warn(
+          `User ${userId} is not the payer for expense ${expenseId} — cancel recurrence denied`,
+        );
         throw new ForbiddenException('Only the payer can cancel a recurring expense.');
       }
 
       if (!expense.isRecurring) {
+        logger.warn(`Expense ${expenseId} is not recurring — cannot cancel`);
         throw new BadRequestException('This expense is not set as recurring.');
       }
 
@@ -287,6 +347,7 @@ class ExpenseService implements IExpenseService {
         nextOccurrenceAt: null,
       });
 
+      logger.info(`Recurring schedule cancelled for expense ${expenseId}`);
       return {
         success: true,
         message: 'Recurring schedule cancelled. No further instances will be generated.',

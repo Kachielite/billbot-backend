@@ -15,9 +15,14 @@ class UserService implements IUserService {
   constructor(@inject('IUserRepository') private userRepository: IUserRepository) {}
 
   async getMe(userId: string): Promise<UserResponseDTO> {
+    logger.info(`Fetching profile for user ${userId}`);
     try {
       const user = await this.userRepository.findById(userId);
-      if (!user) throw new ResourceNotFoundException('User not found.');
+      if (!user) {
+        logger.warn(`User not found: ${userId}`);
+        throw new ResourceNotFoundException('User not found.');
+      }
+      logger.info(`Profile fetched successfully for user ${userId}`);
       return this.mapToDTO(user);
     } catch (error) {
       if (error instanceof ResourceNotFoundException) throw error;
@@ -27,6 +32,7 @@ class UserService implements IUserService {
   }
 
   async updateMe(userId: string, data: UpdateUserDTO): Promise<UserResponseDTO> {
+    logger.info(`Updating profile for user ${userId}`);
     try {
       const updated = await this.userRepository.update(userId, {
         name: data.name,
@@ -34,6 +40,7 @@ class UserService implements IUserService {
         avatarUrl: data.avatar_url,
         phone: data.phone,
       });
+      logger.info(`Profile updated successfully for user ${userId}`);
       return this.mapToDTO(updated);
     } catch (error) {
       logger.error(`Error updating user ${userId}: ${error}`);
@@ -42,9 +49,14 @@ class UserService implements IUserService {
   }
 
   async searchByPhone(phone: string): Promise<UserResponseDTO> {
+    logger.info(`Searching user by phone: ${phone}`);
     try {
       const user = await this.userRepository.findByPhone(phone);
-      if (!user) throw new ResourceNotFoundException('No user found with that phone number.');
+      if (!user) {
+        logger.warn(`No user found with phone: ${phone}`);
+        throw new ResourceNotFoundException('No user found with that phone number.');
+      }
+      logger.info(`User found by phone: ${phone}`);
       return this.mapToDTO(user);
     } catch (error) {
       if (error instanceof ResourceNotFoundException) throw error;

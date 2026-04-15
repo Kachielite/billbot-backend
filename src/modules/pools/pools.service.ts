@@ -40,17 +40,25 @@ class PoolService implements IPoolService {
   ) {}
 
   async createPool(groupId: string, userId: string, data: CreatePoolDTO): Promise<IPool> {
+    logger.info(`Creating pool "${data.name}" in group ${groupId} by user ${userId}`);
     try {
       const group = await this.groupRepository.findById(groupId);
-      if (!group) throw new ResourceNotFoundException('Group not found.');
+      if (!group) {
+        logger.warn(`Group not found: ${groupId}`);
+        throw new ResourceNotFoundException('Group not found.');
+      }
 
       const member = await this.groupRepository.getMember(groupId, userId);
-      if (!member) throw new ForbiddenException('You must be a group member to create a pool.');
+      if (!member) {
+        logger.warn(`User ${userId} is not a member of group ${groupId} — create pool denied`);
+        throw new ForbiddenException('You must be a group member to create a pool.');
+      }
 
       // Validate all memberIds are group members
       for (const memberId of data.memberIds) {
         const gMember = await this.groupRepository.getMember(groupId, memberId);
         if (!gMember) {
+          logger.warn(`User ${memberId} is not a member of group ${groupId} — cannot add to pool`);
           throw new BadRequestException(`User ${memberId} is not a member of this group.`);
         }
       }
@@ -74,6 +82,7 @@ class PoolService implements IPoolService {
         name: pool.name,
       });
 
+      logger.info(`Pool "${pool.name}" (${pool.id}) created in group ${groupId} by user ${userId}`);
       return pool;
     } catch (error) {
       if (
@@ -88,11 +97,17 @@ class PoolService implements IPoolService {
   }
 
   async listPools(groupId: string, userId: string): Promise<IPool[]> {
+    logger.info(`Listing pools for group ${groupId}, requested by user ${userId}`);
     try {
       const member = await this.groupRepository.getMember(groupId, userId);
-      if (!member) throw new ForbiddenException('You are not a member of this group.');
+      if (!member) {
+        logger.warn(`User ${userId} is not a member of group ${groupId} — list pools denied`);
+        throw new ForbiddenException('You are not a member of this group.');
+      }
 
-      return this.poolRepository.findByGroup(groupId);
+      const pools = await this.poolRepository.findByGroup(groupId);
+      logger.info(`Found ${pools.length} pool(s) for group ${groupId}`);
+      return pools;
     } catch (error) {
       if (error instanceof ForbiddenException) throw error;
       logger.error(`Error listing pools: ${error}`);
@@ -101,14 +116,22 @@ class PoolService implements IPoolService {
   }
 
   async getPoolDetail(poolId: string, userId: string): Promise<IPool & { members: unknown[] }> {
+    logger.info(`Fetching pool detail for pool ${poolId}, requested by user ${userId}`);
     try {
       const pool = await this.poolRepository.findById(poolId);
-      if (!pool) throw new ResourceNotFoundException('Pool not found.');
+      if (!pool) {
+        logger.warn(`Pool not found: ${poolId}`);
+        throw new ResourceNotFoundException('Pool not found.');
+      }
 
       const member = await this.poolRepository.getMember(poolId, userId);
-      if (!member) throw new ForbiddenException('You are not a member of this pool.');
+      if (!member) {
+        logger.warn(`User ${userId} is not a member of pool ${poolId}`);
+        throw new ForbiddenException('You are not a member of this pool.');
+      }
 
       const members = await this.poolRepository.getMembers(poolId);
+      logger.info(`Pool detail fetched for pool ${poolId}`);
       return { ...pool, members };
     } catch (error) {
       if (error instanceof ResourceNotFoundException || error instanceof ForbiddenException)
@@ -119,12 +142,17 @@ class PoolService implements IPoolService {
   }
 
   async updatePool(poolId: string, userId: string, data: UpdatePoolDTO): Promise<IPool> {
+    logger.info(`Update pool ${poolId} requested by user ${userId}`);
     try {
       const pool = await this.poolRepository.findById(poolId);
-      if (!pool) throw new ResourceNotFoundException('Pool not found.');
+      if (!pool) {
+        logger.warn(`Pool not found: ${poolId}`);
+        throw new ResourceNotFoundException('Pool not found.');
+      }
 
       const groupMember = await this.groupRepository.getMember(pool.groupId, userId);
       if (!groupMember || groupMember.role !== 'admin') {
+        logger.warn(`User ${userId} is not an admin of group ${pool.groupId} — update pool denied`);
         throw new ForbiddenException('Only admins can update a pool.');
       }
 
@@ -135,9 +163,11 @@ class PoolService implements IPoolService {
       });
 
       if (data.status === 'settled') {
+        logger.info(`Pool ${poolId} marked as settled`);
         this.webhookDispatcher.dispatch(pool.groupId, 'pool.settled', { pool_id: poolId });
       }
 
+      logger.info(`Pool ${poolId} updated successfully by user ${userId}`);
       return updated;
     } catch (error) {
       if (error instanceof ResourceNotFoundException || error instanceof ForbiddenException)
@@ -152,24 +182,31 @@ class PoolService implements IPoolService {
     userId: string,
     data: AddPoolMemberDTO,
   ): Promise<IGeneralResponse<null>> {
+    logger.info(`Add member ${data.userId} to pool ${poolId} requested by user ${userId}`);
     try {
       const pool = await this.poolRepository.findById(poolId);
-      if (!pool) throw new ResourceNotFoundException('Pool not found.');
+      if (!pool) {
+        logger.warn(`Pool not found: ${poolId}`);
+        throw new ResourceNotFoundException('Pool not found.');
+      }
 
       // Caller must be a group admin
       const caller = await this.groupRepository.getMember(pool.groupId, userId);
       if (!caller || caller.role !== 'admin') {
+        logger.warn(`User ${userId} is not an admin of group ${pool.groupId} — add member denied`);
         throw new ForbiddenException('Only group admins can add pool members.');
       }
 
       // Verify target is a group member
       const groupMember = await this.groupRepository.getMember(pool.groupId, data.userId);
       if (!groupMember) {
+        logger.warn(`User ${data.userId} is not a group member — cannot add to pool ${poolId}`);
         throw new BadRequestException('User must be a group member before being added to a pool.');
       }
 
       const existing = await this.poolRepository.getMember(poolId, data.userId);
       if (existing) {
+        logger.warn(`User ${data.userId} is already a member of pool ${poolId}`);
         throw new BadRequestException('User is already a pool member.');
       }
 
@@ -179,6 +216,7 @@ class PoolService implements IPoolService {
         user_id: data.userId,
       });
 
+      logger.info(`Member ${data.userId} added to pool ${poolId} by user ${userId}`);
       return { success: true, message: 'Member added to pool.', data: null };
     } catch (error) {
       if (
@@ -197,19 +235,30 @@ class PoolService implements IPoolService {
     adminId: string,
     targetUserId: string,
   ): Promise<IGeneralResponse<null>> {
+    logger.info(`Remove member ${targetUserId} from pool ${poolId} requested by admin ${adminId}`);
     try {
       const pool = await this.poolRepository.findById(poolId);
-      if (!pool) throw new ResourceNotFoundException('Pool not found.');
+      if (!pool) {
+        logger.warn(`Pool not found: ${poolId}`);
+        throw new ResourceNotFoundException('Pool not found.');
+      }
 
       const admin = await this.groupRepository.getMember(pool.groupId, adminId);
       if (!admin || admin.role !== 'admin') {
+        logger.warn(
+          `User ${adminId} is not an admin of group ${pool.groupId} — remove member denied`,
+        );
         throw new ForbiddenException('Only admins can remove pool members.');
       }
 
       const target = await this.poolRepository.getMember(poolId, targetUserId);
-      if (!target) throw new ResourceNotFoundException('Member not found in pool.');
+      if (!target) {
+        logger.warn(`Member ${targetUserId} not found in pool ${poolId}`);
+        throw new ResourceNotFoundException('Member not found in pool.');
+      }
 
       await this.poolRepository.removeMember(poolId, targetUserId);
+      logger.info(`Member ${targetUserId} removed from pool ${poolId} by admin ${adminId}`);
       return { success: true, message: 'Member removed from pool.', data: null };
     } catch (error) {
       if (error instanceof ResourceNotFoundException || error instanceof ForbiddenException)

@@ -44,9 +44,13 @@ class WebhookService implements IWebhookService {
     userId: string,
     data: CreateWebhookDTO,
   ): Promise<IWebhookSubscription & { secret: string }> {
+    logger.info(
+      `Create webhook subscription for group ${groupId} by user ${userId}, url: ${data.url}`,
+    );
     try {
       const member = await this.groupRepository.getMember(groupId, userId);
       if (!member || member.role !== 'admin') {
+        logger.warn(`User ${userId} is not an admin of group ${groupId} — webhook creation denied`);
         throw new ForbiddenException('Only group admins can register webhooks.');
       }
 
@@ -54,6 +58,7 @@ class WebhookService implements IWebhookService {
       try {
         await assertSafeWebhookUrl(data.url);
       } catch (err) {
+        logger.warn(`Webhook URL failed SSRF guard: ${data.url} — ${(err as Error).message}`);
         throw new BadRequestException((err as Error).message);
       }
 
@@ -67,6 +72,7 @@ class WebhookService implements IWebhookService {
         createdBy: userId,
       });
 
+      logger.info(`Webhook subscription ${sub.id} created for group ${groupId}`);
       return { ...sub, secret };
     } catch (error) {
       if (error instanceof ForbiddenException || error instanceof BadRequestException) throw error;
@@ -79,13 +85,16 @@ class WebhookService implements IWebhookService {
     groupId: string,
     userId: string,
   ): Promise<Omit<IWebhookSubscription, 'secret'>[]> {
+    logger.info(`Listing webhook subscriptions for group ${groupId}, requested by user ${userId}`);
     try {
       const member = await this.groupRepository.getMember(groupId, userId);
       if (!member || member.role !== 'admin') {
+        logger.warn(`User ${userId} is not an admin of group ${groupId} — list webhooks denied`);
         throw new ForbiddenException('Only group admins can view webhooks.');
       }
 
       const subs = await this.webhookRepository.findSubscriptionsByGroup(groupId);
+      logger.info(`Found ${subs.length} webhook subscription(s) for group ${groupId}`);
       return subs.map(({ secret: _secret, ...rest }) => rest);
     } catch (error) {
       if (error instanceof ForbiddenException) throw error;
@@ -99,17 +108,25 @@ class WebhookService implements IWebhookService {
     webhookId: string,
     userId: string,
   ): Promise<IGeneralResponse<null>> {
+    logger.info(
+      `Delete webhook subscription ${webhookId} from group ${groupId} requested by user ${userId}`,
+    );
     try {
       const member = await this.groupRepository.getMember(groupId, userId);
       if (!member || member.role !== 'admin') {
+        logger.warn(`User ${userId} is not an admin of group ${groupId} — delete webhook denied`);
         throw new ForbiddenException('Only group admins can remove webhooks.');
       }
 
       const subs = await this.webhookRepository.findSubscriptionsByGroup(groupId);
       const target = subs.find((s) => s.id === webhookId);
-      if (!target) throw new ResourceNotFoundException('Webhook subscription not found.');
+      if (!target) {
+        logger.warn(`Webhook subscription ${webhookId} not found in group ${groupId}`);
+        throw new ResourceNotFoundException('Webhook subscription not found.');
+      }
 
       await this.webhookRepository.deleteSubscription(webhookId);
+      logger.info(`Webhook subscription ${webhookId} deleted by user ${userId}`);
       return { success: true, message: 'Webhook subscription removed.', data: null };
     } catch (error) {
       if (error instanceof ForbiddenException || error instanceof ResourceNotFoundException)

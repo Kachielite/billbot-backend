@@ -34,6 +34,7 @@ class AuthService implements IAuthService {
   ) {}
 
   async googleSignIn(payload: IGoogleAuthPayload): Promise<IAuthResult> {
+    logger.info('Google sign-in request received');
     try {
       // Verify with Google
       const ticket = await googleClient.verifyIdToken({
@@ -54,9 +55,11 @@ class AuthService implements IAuthService {
       if (user) {
         // Link google ID if not yet linked
         if (!user.googleId) {
+          logger.info(`Linking Google ID to existing account for email: ${email}`);
           user = await this.userRepository.update(user.id, { googleId });
         }
       } else {
+        logger.info(`Creating new user account via Google sign-in for email: ${email}`);
         user = await this.userRepository.create({
           id: uuidv4(),
           name: name || 'BillBot User',
@@ -68,6 +71,7 @@ class AuthService implements IAuthService {
       }
 
       const session = await this.createSession(user.id);
+      logger.info(`Google sign-in successful for user ${user.id} (new: ${isNewUser})`);
 
       return {
         token: session.token,
@@ -89,6 +93,7 @@ class AuthService implements IAuthService {
   }
 
   async appleSignIn(payload: IAppleAuthPayload): Promise<IAuthResult> {
+    logger.info('Apple sign-in request received');
     try {
       // Verify Apple identity token
       const applePayload = await appleSignin.verifyIdToken(payload.identityToken, {
@@ -115,11 +120,13 @@ class AuthService implements IAuthService {
         user = await this.userRepository.findByEmail(email);
         if (user && !user.appleId) {
           // Link apple ID to existing account
+          logger.info(`Linking Apple ID to existing account for email: ${email}`);
           user = await this.userRepository.update(user.id, { appleId });
         }
       }
 
       if (!user) {
+        logger.info(`Creating new user account via Apple sign-in`);
         user = await this.userRepository.create({
           id: uuidv4(),
           name,
@@ -131,6 +138,7 @@ class AuthService implements IAuthService {
       }
 
       const session = await this.createSession(user.id);
+      logger.info(`Apple sign-in successful for user ${user.id} (new: ${isNewUser})`);
 
       return {
         token: session.token,
@@ -151,10 +159,12 @@ class AuthService implements IAuthService {
   }
 
   async logout(token: string): Promise<{ message: string }> {
+    logger.info('Logout request received');
     try {
       // token passed here is the raw bearer; hash before DB lookup
       const tokenHash = crypto.createHash('sha256').update(token).digest('hex');
       await this.authRepository.deleteSessionByToken(tokenHash);
+      logger.info('User logged out successfully');
       return { message: 'Logged out successfully.' };
     } catch (error) {
       logger.error(`Logout error: ${error}`);

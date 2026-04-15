@@ -46,18 +46,29 @@ class BalanceService implements IBalanceService {
   ) {}
 
   async getPoolBalances(poolId: string, userId: string): Promise<IBalanceResult> {
+    logger.info(`Calculating balances for pool ${poolId}, requested by user ${userId}`);
     try {
       const pool = await this.poolRepository.findById(poolId);
-      if (!pool) throw new ResourceNotFoundException('Pool not found.');
+      if (!pool) {
+        logger.warn(`Pool not found: ${poolId}`);
+        throw new ResourceNotFoundException('Pool not found.');
+      }
 
       const member = await this.poolRepository.getMember(poolId, userId);
-      if (!member) throw new ForbiddenException('You are not a member of this pool.');
+      if (!member) {
+        logger.warn(`User ${userId} is not a member of pool ${poolId}`);
+        throw new ForbiddenException('You are not a member of this pool.');
+      }
 
       const members = await this.poolRepository.getMembers(poolId);
       const memberMap = new Map(members.map((m) => [m.userId, m]));
 
       const expenses = await this.expenseRepository.findByPool(poolId);
       const splits = await this.expenseRepository.getSplitsByPool(poolId);
+
+      logger.info(
+        `Computing balances from ${expenses.length} expense(s) and ${splits.length} split(s) for pool ${poolId}`,
+      );
 
       // Calculate totals per user
       const totals = new Map<string, { paid: number; owed: number }>();
@@ -97,6 +108,9 @@ class BalanceService implements IBalanceService {
       // Simplify debts using greedy algorithm
       const balances = this.simplifyDebts(nets, memberMap);
 
+      logger.info(
+        `Balance calculation complete for pool ${poolId}: ${balances.length} balance entry/entries`,
+      );
       return { balances, memberSummary };
     } catch (error) {
       if (error instanceof ResourceNotFoundException || error instanceof ForbiddenException)
@@ -107,11 +121,15 @@ class BalanceService implements IBalanceService {
   }
 
   async getUserBalanceSummary(userId: string): Promise<IUserBalanceSummary> {
+    logger.info(`Fetching balance summary for user ${userId}`);
     try {
       const [totalOwed, totalOwedToMe] = await Promise.all([
         this.expenseRepository.getTotalOwedByUser(userId),
         this.expenseRepository.getTotalOwedToUser(userId),
       ]);
+      logger.info(
+        `Balance summary for user ${userId}: owed=${totalOwed}, owed to me=${totalOwedToMe}`,
+      );
       return { totalOwed, totalOwedToMe, currency: 'NGN' };
     } catch (error) {
       logger.error(`Error calculating balance summary for user ${userId}: ${error}`);

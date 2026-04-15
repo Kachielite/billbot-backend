@@ -33,6 +33,7 @@ class GroupService implements IGroupService {
   ) {}
 
   async createGroup(userId: string, data: CreateGroupDTO): Promise<GroupResponseDTO> {
+    logger.info(`Creating group "${data.name}" for user ${userId}`);
     try {
       let inviteCode = generateInviteCode();
       // Ensure uniqueness
@@ -54,6 +55,7 @@ class GroupService implements IGroupService {
 
       this.webhookDispatcher.dispatch(group.id, 'group.created', { group: this.mapToDTO(group) });
 
+      logger.info(`Group "${group.name}" (${group.id}) created successfully by user ${userId}`);
       return this.mapToDTO(group);
     } catch (error) {
       logger.error(`Error creating group for user ${userId}: ${error}`);
@@ -62,8 +64,10 @@ class GroupService implements IGroupService {
   }
 
   async getUserGroups(userId: string): Promise<GroupResponseDTO[]> {
+    logger.info(`Fetching groups for user ${userId}`);
     try {
       const groups = await this.groupRepository.findAllForUser(userId);
+      logger.info(`Found ${groups.length} group(s) for user ${userId}`);
       return groups.map((g) => this.mapToDTO(g));
     } catch (error) {
       logger.error(`Error fetching groups for user ${userId}: ${error}`);
@@ -72,13 +76,21 @@ class GroupService implements IGroupService {
   }
 
   async getGroupDetail(groupId: string, userId: string): Promise<IGroupDetail> {
+    logger.info(`Fetching group detail for group ${groupId}, requested by user ${userId}`);
     try {
       const group = await this.groupRepository.findByIdWithDetail(groupId);
-      if (!group) throw new ResourceNotFoundException('Group not found.');
+      if (!group) {
+        logger.warn(`Group not found: ${groupId}`);
+        throw new ResourceNotFoundException('Group not found.');
+      }
 
       const member = await this.groupRepository.getMember(groupId, userId);
-      if (!member) throw new ForbiddenException('You are not a member of this group.');
+      if (!member) {
+        logger.warn(`User ${userId} is not a member of group ${groupId}`);
+        throw new ForbiddenException('You are not a member of this group.');
+      }
 
+      logger.info(`Group detail fetched for group ${groupId}`);
       return group;
     } catch (error) {
       if (error instanceof ResourceNotFoundException || error instanceof ForbiddenException)
@@ -89,16 +101,22 @@ class GroupService implements IGroupService {
   }
 
   async deleteGroup(groupId: string, userId: string): Promise<IGeneralResponse<null>> {
+    logger.info(`Delete group ${groupId} requested by user ${userId}`);
     try {
       const group = await this.groupRepository.findById(groupId);
-      if (!group) throw new ResourceNotFoundException('Group not found.');
+      if (!group) {
+        logger.warn(`Group not found for deletion: ${groupId}`);
+        throw new ResourceNotFoundException('Group not found.');
+      }
 
       const member = await this.groupRepository.getMember(groupId, userId);
       if (!member || member.role !== 'admin') {
+        logger.warn(`User ${userId} is not an admin of group ${groupId} — delete denied`);
         throw new ForbiddenException('Only admins can delete a group.');
       }
 
       await this.groupRepository.delete(groupId);
+      logger.info(`Group ${groupId} deleted successfully by user ${userId}`);
       return { success: true, message: 'Group deleted successfully.', data: null };
     } catch (error) {
       if (error instanceof ResourceNotFoundException || error instanceof ForbiddenException)
@@ -113,21 +131,32 @@ class GroupService implements IGroupService {
     adminId: string,
     targetUserId: string,
   ): Promise<IGeneralResponse<null>> {
+    logger.info(
+      `Remove member ${targetUserId} from group ${groupId} requested by admin ${adminId}`,
+    );
     try {
       const group = await this.groupRepository.findById(groupId);
-      if (!group) throw new ResourceNotFoundException('Group not found.');
+      if (!group) {
+        logger.warn(`Group not found: ${groupId}`);
+        throw new ResourceNotFoundException('Group not found.');
+      }
 
       const admin = await this.groupRepository.getMember(groupId, adminId);
       if (!admin || admin.role !== 'admin') {
+        logger.warn(`User ${adminId} is not an admin of group ${groupId} — remove member denied`);
         throw new ForbiddenException('Only admins can remove members.');
       }
 
       const target = await this.groupRepository.getMember(groupId, targetUserId);
-      if (!target) throw new ResourceNotFoundException('Member not found in group.');
+      if (!target) {
+        logger.warn(`Member ${targetUserId} not found in group ${groupId}`);
+        throw new ResourceNotFoundException('Member not found in group.');
+      }
 
       if (target.role === 'admin') {
         const adminCount = await this.groupRepository.getAdminCount(groupId);
         if (adminCount <= 1) {
+          logger.warn(`Cannot remove last admin ${targetUserId} from group ${groupId}`);
           throw new ForbiddenException('Cannot remove the last admin from the group.');
         }
       }
@@ -139,6 +168,7 @@ class GroupService implements IGroupService {
         user_id: targetUserId,
       });
 
+      logger.info(`Member ${targetUserId} removed from group ${groupId} by admin ${adminId}`);
       return { success: true, message: 'Member removed successfully.', data: null };
     } catch (error) {
       if (error instanceof ResourceNotFoundException || error instanceof ForbiddenException)
