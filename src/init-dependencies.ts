@@ -7,7 +7,10 @@ import { APP_TOKENS } from '@/common/constants/app.tokens';
 
 // Module dependencies
 import { registerAuthDependencies } from '@/modules/auth/auth.dependencies';
-import { registerUserDependencies } from '@/modules/users/users.dependencies';
+import {
+  registerUserRepository,
+  registerUserDependencies,
+} from '@/modules/users/users.dependencies';
 import {
   registerGroupRepository,
   registerGroupDependencies,
@@ -29,6 +32,7 @@ import {
   seedCategories,
 } from '@/modules/categories/categories.dependencies';
 import { registerNotificationDependencies } from '@/modules/notifications/notifications.dependencies';
+import { registerActivityDependencies } from '@/modules/activities/activities.dependencies';
 
 export async function configureContainer(): Promise<void> {
   // Core singletons
@@ -45,8 +49,8 @@ export async function configureContainer(): Promise<void> {
 
   // 1. Webhook dispatcher only (no IGroupRepository dep)
   registerWebhookDispatcher();
-  // 2. Users (IUserRepository needed by auth)
-  registerUserDependencies();
+  // 2. Users repository + service early (IUserRepository needed by auth; controller deferred)
+  registerUserRepository();
   registerAuthDependencies();
   // 3. Group repository only — other modules (webhooks, invites, pools) inject IGroupRepository
   registerGroupRepository();
@@ -56,17 +60,21 @@ export async function configureContainer(): Promise<void> {
   registerNotificationDependencies();
   // 6. Invites (needs IGroupRepository + WebhookDispatcher + NotificationService)
   registerInviteDependencies();
-  // 7. Pools (needed by expenses, balances, settlements)
+  // 7. Activities (IActivityRepository needed by pools, expenses, settlements)
+  registerActivityDependencies();
+  // 8. Pools (needed by expenses, balances, settlements)
   registerPoolDependencies();
-  // 8. Categories (needed by expenses for FK validation)
+  // 9. Categories (needed by expenses for FK validation)
   registerCategoryDependencies();
-  // 9. Expenses (needs ICategoryRepository)
+  // 10. Expenses (needs ICategoryRepository + IActivityRepository)
   registerExpenseDependencies();
-  // 10. Groups service + controller (GroupService now also needs IExpenseRepository from step 9)
+  // 11. Groups service + controller (GroupService needs IExpenseRepository from step 10)
   registerGroupDependencies();
-  // 11. Balances
+  // 12. User controller (UserController needs IExpenseService + ActivityService)
+  registerUserDependencies();
+  // 13. Balances
   registerBalanceDependencies();
-  // 12. Settlements
+  // 14. Settlements (needs IActivityRepository)
   registerSettlementDependencies();
 
   // Seed reference data (idempotent — skips if already populated)

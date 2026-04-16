@@ -7,6 +7,7 @@ import { IGeneralResponse } from '@/common/types/interface';
 import { IPoolRepository } from '@/modules/pools/pools.repository';
 import { IExpenseRepository } from '@/modules/expenses/expenses.repository';
 import { WebhookDispatcher } from '@/modules/webhooks/webhooks.dispatcher';
+import { IActivityRepository } from '@/modules/activities/activities.repository';
 import { uploadFile } from '@/common/lib/storage';
 import { parseSettlementProof } from '@/common/lib/ai-parser';
 import {
@@ -41,7 +42,19 @@ class SettlementService implements ISettlementService {
     @inject('IPoolRepository') private poolRepository: IPoolRepository,
     @inject('IExpenseRepository') private expenseRepository: IExpenseRepository,
     @inject(WebhookDispatcher) private webhookDispatcher: WebhookDispatcher,
+    @inject('IActivityRepository') private activityRepository: IActivityRepository,
   ) {}
+
+  private logActivity(
+    actorId: string,
+    poolId: string,
+    type: string,
+    metadata: Record<string, unknown>,
+  ): void {
+    this.activityRepository
+      .create({ id: uuidv4(), actorId, poolId, type, metadata })
+      .catch((err: unknown) => logger.warn(`Failed to log activity (${type}): ${err}`));
+  }
 
   async createSettlement(
     poolId: string,
@@ -108,6 +121,12 @@ class SettlementService implements ISettlementService {
         from_user: fromUserId,
         to_user: data.toUserId,
         amount: data.amount,
+      });
+      this.logActivity(fromUserId, poolId, 'settlement.submitted', {
+        settlement_id: settlement.id,
+        amount: data.amount.toString(),
+        currency: 'NGN',
+        to_user_id: data.toUserId,
       });
 
       logger.info(`Settlement ${settlement.id} created in pool ${poolId}`);
@@ -214,6 +233,12 @@ class SettlementService implements ISettlementService {
             settlement_id: settlementId,
           });
         }
+        this.logActivity(userId, settlement.poolId, 'settlement.confirmed', {
+          settlement_id: settlementId,
+          amount: settlement.amount,
+          currency: settlement.currency,
+          from_user_id: settlement.fromUser,
+        });
       }
 
       logger.info(`Settlement ${settlementId} confirmed by user ${userId}`);
@@ -272,6 +297,10 @@ class SettlementService implements ISettlementService {
             reason: data.reason,
           });
         }
+        this.logActivity(userId, settlement.poolId, 'settlement.disputed', {
+          settlement_id: settlementId,
+          reason: data.reason,
+        });
       }
 
       logger.info(`Settlement ${settlementId} disputed by user ${userId}`);

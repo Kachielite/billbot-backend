@@ -8,6 +8,7 @@ import { IPagination, IGeneralResponse } from '@/common/types/interface';
 import { IPoolRepository } from '@/modules/pools/pools.repository';
 import { ICategoryRepository } from '@/modules/categories/categories.repository';
 import { WebhookDispatcher } from '@/modules/webhooks/webhooks.dispatcher';
+import { IActivityRepository } from '@/modules/activities/activities.repository';
 import { uploadFile } from '@/common/lib/storage';
 import { parseReceipt } from '@/common/lib/ai-parser';
 import {
@@ -41,7 +42,6 @@ export interface IExpenseService {
   deleteExpense(expenseId: string, userId: string): Promise<{ success: boolean; message: string }>;
   cancelRecurrence(expenseId: string, userId: string): Promise<IGeneralResponse<null>>;
   listUpcomingExpenses(
-    poolId: string,
     userId: string,
     page: number,
     limit: number,
@@ -55,6 +55,7 @@ class ExpenseService implements IExpenseService {
     @inject('IPoolRepository') private poolRepository: IPoolRepository,
     @inject('ICategoryRepository') private categoryRepository: ICategoryRepository,
     @inject(WebhookDispatcher) private webhookDispatcher: WebhookDispatcher,
+    @inject('IActivityRepository') private activityRepository: IActivityRepository,
   ) {}
 
   async createExpense(
@@ -80,8 +81,9 @@ class ExpenseService implements IExpenseService {
       }
 
       // Validate categoryId if provided
+      let category: { id: string; name: string; emoji: string } | null = null;
       if (data.categoryId) {
-        const category = await this.categoryRepository.findById(data.categoryId);
+        category = await this.categoryRepository.findById(data.categoryId);
         if (!category) {
           logger.warn(`Invalid categoryId: ${data.categoryId}`);
           throw new BadRequestException('Invalid categoryId — category not found.');
@@ -169,6 +171,13 @@ class ExpenseService implements IExpenseService {
         expense_id: expense.id,
         pool_id: poolId,
         amount: data.amount,
+      });
+      this.logActivity(userId, poolId, 'expense.created', {
+        expense_id: expense.id,
+        amount: data.amount,
+        currency: data.currency,
+        description: data.description ?? null,
+        category: category ? { id: category.id, name: category.name, emoji: category.emoji } : null,
       });
 
       logger.info(`Expense ${expense.id} created successfully in pool ${poolId}`);
@@ -305,6 +314,9 @@ class ExpenseService implements IExpenseService {
           expense_id: expenseId,
           pool_id: expense.poolId,
         });
+        this.logActivity(userId, expense.poolId, 'expense.deleted', {
+          expense_id: expenseId,
+        });
       }
 
       logger.info(`Expense ${expenseId} deleted successfully by user ${userId}`);
@@ -372,29 +384,22 @@ class ExpenseService implements IExpenseService {
   }
 
   async listUpcomingExpenses(
-    poolId: string,
     userId: string,
     page: number,
     limit: number,
   ): Promise<IPagination<ExpenseResponseDTO>> {
     logger.info(
-      `Listing upcoming recurring expenses for pool ${poolId}, page ${page}, limit ${limit}, requested by user ${userId}`,
+      `Listing upcoming recurring expenses for user ${userId}, page ${page}, limit ${limit}`,
     );
     try {
-      const member = await this.poolRepository.getMember(poolId, userId);
-      if (!member) {
-        logger.warn(`User ${userId} is not a member of pool ${poolId}`);
-        throw new ForbiddenException('You are not a member of this pool.');
-      }
-
       const offset = (page - 1) * limit;
-      const { expenses, total } = await this.expenseRepository.findUpcomingRecurring(
-        poolId,
+      const { expenses, total } = await this.expenseRepository.findUpcomingRecurringForUser(
+        userId,
         limit,
         offset,
       );
 
-      logger.info(`Found ${total} upcoming recurring expense(s) for pool ${poolId}`);
+      logger.info(`Found ${total} upcoming recurring expense(s) for user ${userId}`);
       return {
         page,
         limit,
@@ -403,10 +408,20 @@ class ExpenseService implements IExpenseService {
         items: expenses.map((e) => this.mapToDTO(e)),
       };
     } catch (error) {
-      if (error instanceof ForbiddenException) throw error;
-      logger.error(`Error listing upcoming expenses for pool ${poolId}: ${error}`);
+      logger.error(`Error listing upcoming expenses for user ${userId}: ${error}`);
       throw new InternalServerException('Failed to list upcoming expenses.');
     }
+  }
+
+  private logActivity(
+    actorId: string,
+    poolId: string,
+    type: string,
+    metadata: Record<string, unknown>,
+  ): void {
+    this.activityRepository
+      .create({ id: uuidv4(), actorId, poolId, type, metadata })
+      .catch((err: unknown) => logger.warn(`Failed to log activity (${type}): ${err}`));
   }
 
   private mapToDTO(expense: IExpense): ExpenseResponseDTO {

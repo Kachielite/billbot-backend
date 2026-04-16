@@ -2,7 +2,7 @@ import { inject, injectable } from 'tsyringe';
 import { eq, and, lte, gte, gt, or, isNull, ne, sql, inArray } from 'drizzle-orm';
 import Database from '@/common/lib/database';
 import { ExpenseSchema, ExpenseSplitSchema } from './expenses.schema';
-import { ExpensePoolSchema } from '@/modules/pools/pools.schema';
+import { ExpensePoolSchema, PoolMemberSchema } from '@/modules/pools/pools.schema';
 import { IExpense, IExpenseSplit } from './expenses.interface';
 
 export interface IExpenseRepository {
@@ -44,8 +44,8 @@ export interface IExpenseRepository {
     id: string,
     data: { nextOccurrenceAt?: Date | null; isRecurring?: boolean },
   ): Promise<void>;
-  findUpcomingRecurring(
-    poolId: string,
+  findUpcomingRecurringForUser(
+    userId: string,
     limit: number,
     offset: number,
   ): Promise<{ expenses: IExpense[]; total: number }>;
@@ -194,33 +194,46 @@ class ExpenseRepositoryImpl implements IExpenseRepository {
     await this.db.client.update(ExpenseSchema).set(updateData).where(eq(ExpenseSchema.id, id));
   }
 
-  async findUpcomingRecurring(
-    poolId: string,
+  async findUpcomingRecurringForUser(
+    userId: string,
     limit: number,
     offset: number,
   ): Promise<{ expenses: IExpense[]; total: number }> {
     const now = new Date();
-    const condition = and(
-      eq(ExpenseSchema.poolId, poolId),
-      eq(ExpenseSchema.isRecurring, true),
-      gt(ExpenseSchema.nextOccurrenceAt, now),
-      or(isNull(ExpenseSchema.recurrenceEndDate), gte(ExpenseSchema.recurrenceEndDate, now)),
-    );
 
     const [countRow] = await this.db.client
       .select({ total: sql<number>`COUNT(*)::int` })
       .from(ExpenseSchema)
-      .where(condition);
+      .innerJoin(PoolMemberSchema, eq(PoolMemberSchema.poolId, ExpenseSchema.poolId))
+      .where(
+        and(
+          eq(PoolMemberSchema.userId, userId),
+          eq(ExpenseSchema.isRecurring, true),
+          gt(ExpenseSchema.nextOccurrenceAt, now),
+          or(isNull(ExpenseSchema.recurrenceEndDate), gte(ExpenseSchema.recurrenceEndDate, now)),
+        ),
+      );
 
     const rows = await this.db.client
-      .select()
+      .select({ expense: ExpenseSchema })
       .from(ExpenseSchema)
-      .where(condition)
+      .innerJoin(PoolMemberSchema, eq(PoolMemberSchema.poolId, ExpenseSchema.poolId))
+      .where(
+        and(
+          eq(PoolMemberSchema.userId, userId),
+          eq(ExpenseSchema.isRecurring, true),
+          gt(ExpenseSchema.nextOccurrenceAt, now),
+          or(isNull(ExpenseSchema.recurrenceEndDate), gte(ExpenseSchema.recurrenceEndDate, now)),
+        ),
+      )
       .orderBy(ExpenseSchema.nextOccurrenceAt)
       .limit(limit)
       .offset(offset);
 
-    return { expenses: rows as unknown as IExpense[], total: countRow?.total ?? 0 };
+    return {
+      expenses: rows.map((r) => r.expense) as unknown as IExpense[],
+      total: countRow?.total ?? 0,
+    };
   }
 
   async getTotalOwedByUser(userId: string): Promise<number> {
