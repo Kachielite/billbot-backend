@@ -40,6 +40,12 @@ export interface IExpenseService {
   ): Promise<ExpenseResponseDTO & { splits: unknown[] }>;
   deleteExpense(expenseId: string, userId: string): Promise<{ success: boolean; message: string }>;
   cancelRecurrence(expenseId: string, userId: string): Promise<IGeneralResponse<null>>;
+  listUpcomingExpenses(
+    poolId: string,
+    userId: string,
+    page: number,
+    limit: number,
+  ): Promise<IPagination<ExpenseResponseDTO>>;
 }
 
 @injectable()
@@ -362,6 +368,44 @@ class ExpenseService implements IExpenseService {
         throw error;
       logger.error(`Error cancelling recurrence: ${error}`);
       throw new InternalServerException('Failed to cancel recurring expense.');
+    }
+  }
+
+  async listUpcomingExpenses(
+    poolId: string,
+    userId: string,
+    page: number,
+    limit: number,
+  ): Promise<IPagination<ExpenseResponseDTO>> {
+    logger.info(
+      `Listing upcoming recurring expenses for pool ${poolId}, page ${page}, limit ${limit}, requested by user ${userId}`,
+    );
+    try {
+      const member = await this.poolRepository.getMember(poolId, userId);
+      if (!member) {
+        logger.warn(`User ${userId} is not a member of pool ${poolId}`);
+        throw new ForbiddenException('You are not a member of this pool.');
+      }
+
+      const offset = (page - 1) * limit;
+      const { expenses, total } = await this.expenseRepository.findUpcomingRecurring(
+        poolId,
+        limit,
+        offset,
+      );
+
+      logger.info(`Found ${total} upcoming recurring expense(s) for pool ${poolId}`);
+      return {
+        page,
+        limit,
+        total_items: total,
+        pages: Math.ceil(total / limit),
+        items: expenses.map((e) => this.mapToDTO(e)),
+      };
+    } catch (error) {
+      if (error instanceof ForbiddenException) throw error;
+      logger.error(`Error listing upcoming expenses for pool ${poolId}: ${error}`);
+      throw new InternalServerException('Failed to list upcoming expenses.');
     }
   }
 

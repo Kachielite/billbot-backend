@@ -1,5 +1,5 @@
 import { inject, injectable } from 'tsyringe';
-import { eq, and, lte, gte, or, isNull, ne, sql, inArray } from 'drizzle-orm';
+import { eq, and, lte, gte, gt, or, isNull, ne, sql, inArray } from 'drizzle-orm';
 import Database from '@/common/lib/database';
 import { ExpenseSchema, ExpenseSplitSchema } from './expenses.schema';
 import { ExpensePoolSchema } from '@/modules/pools/pools.schema';
@@ -44,6 +44,11 @@ export interface IExpenseRepository {
     id: string,
     data: { nextOccurrenceAt?: Date | null; isRecurring?: boolean },
   ): Promise<void>;
+  findUpcomingRecurring(
+    poolId: string,
+    limit: number,
+    offset: number,
+  ): Promise<{ expenses: IExpense[]; total: number }>;
   getTotalOwedByUser(userId: string): Promise<number>;
   getTotalOwedToUser(userId: string): Promise<number>;
   getGroupBalancesForUser(
@@ -187,6 +192,35 @@ class ExpenseRepositoryImpl implements IExpenseRepository {
     if (data.nextOccurrenceAt !== undefined) updateData.nextOccurrenceAt = data.nextOccurrenceAt;
     if (data.isRecurring !== undefined) updateData.isRecurring = data.isRecurring;
     await this.db.client.update(ExpenseSchema).set(updateData).where(eq(ExpenseSchema.id, id));
+  }
+
+  async findUpcomingRecurring(
+    poolId: string,
+    limit: number,
+    offset: number,
+  ): Promise<{ expenses: IExpense[]; total: number }> {
+    const now = new Date();
+    const condition = and(
+      eq(ExpenseSchema.poolId, poolId),
+      eq(ExpenseSchema.isRecurring, true),
+      gt(ExpenseSchema.nextOccurrenceAt, now),
+      or(isNull(ExpenseSchema.recurrenceEndDate), gte(ExpenseSchema.recurrenceEndDate, now)),
+    );
+
+    const [countRow] = await this.db.client
+      .select({ total: sql<number>`COUNT(*)::int` })
+      .from(ExpenseSchema)
+      .where(condition);
+
+    const rows = await this.db.client
+      .select()
+      .from(ExpenseSchema)
+      .where(condition)
+      .orderBy(ExpenseSchema.nextOccurrenceAt)
+      .limit(limit)
+      .offset(offset);
+
+    return { expenses: rows as unknown as IExpense[], total: countRow?.total ?? 0 };
   }
 
   async getTotalOwedByUser(userId: string): Promise<number> {
