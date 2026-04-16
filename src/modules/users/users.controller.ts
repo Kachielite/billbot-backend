@@ -212,6 +212,22 @@ class UserController extends BaseController {
    *       - in: query
    *         name: limit
    *         schema: { type: integer, default: 20 }
+   *       - in: query
+   *         name: pool_id
+   *         schema: { type: string }
+   *         description: Filter to a specific pool (must be a pool the user belongs to)
+   *       - in: query
+   *         name: group_id
+   *         schema: { type: string }
+   *         description: Filter to all pools within a specific group
+   *       - in: query
+   *         name: from
+   *         schema: { type: string, format: date-time }
+   *         description: Return activities on or after this ISO 8601 timestamp
+   *       - in: query
+   *         name: to
+   *         schema: { type: string, format: date-time }
+   *         description: Return activities on or before this ISO 8601 timestamp
    *     responses:
    *       '200':
    *         description: Paginated activity feed
@@ -232,7 +248,7 @@ class UserController extends BaseController {
    *                       id: { type: string }
    *                       type:
    *                         type: string
-   *                         enum: [expense.created, expense.deleted, pool.created, pool.settled, pool.member_added, pool.member_removed, settlement.submitted, settlement.confirmed, settlement.disputed]
+   *                         enum: [expense.created, expense.deleted, settlement.submitted, settlement.confirmed, settlement.disputed]
    *                       actor:
    *                         type: object
    *                         nullable: true
@@ -251,12 +267,8 @@ class UserController extends BaseController {
    *                         nullable: true
    *                         description: |
    *                           Type-specific payload:
-   *                           - expense.created: { expense_id, amount, currency, description }
+   *                           - expense.created: { expense_id, amount, currency, description, category }
    *                           - expense.deleted: { expense_id }
-   *                           - pool.created: { pool_name }
-   *                           - pool.settled: {}
-   *                           - pool.member_added: { target_user_id }
-   *                           - pool.member_removed: { target_user_id }
    *                           - settlement.submitted: { settlement_id, amount, currency, to_user_id }
    *                           - settlement.confirmed: { settlement_id, amount, currency, from_user_id }
    *                           - settlement.disputed: { settlement_id, reason }
@@ -272,7 +284,18 @@ class UserController extends BaseController {
       100,
       Math.max(1, parseInt(String(req.query['limit'] ?? '20'), 10) || 20),
     );
-    return this.activityService.listActivitiesForUser(userId, page, limit);
+
+    const poolId = req.query['pool_id'] as string | undefined;
+    const groupId = req.query['group_id'] as string | undefined;
+    const from = req.query['from'] ? new Date(req.query['from'] as string) : undefined;
+    const to = req.query['to'] ? new Date(req.query['to'] as string) : undefined;
+
+    return this.activityService.listActivitiesForUser(userId, page, limit, {
+      poolId,
+      groupId,
+      from: from && !isNaN(from.getTime()) ? from : undefined,
+      to: to && !isNaN(to.getTime()) ? to : undefined,
+    });
   }
 
   @Get('/me/expenses/upcoming')

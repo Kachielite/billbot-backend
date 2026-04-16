@@ -6,7 +6,6 @@ import { CreatePoolDTO, UpdatePoolDTO, AddPoolMemberDTO } from './pools.dto';
 import { IGeneralResponse } from '@/common/types/interface';
 import { IGroupRepository } from '@/modules/groups/groups.repository';
 import { WebhookDispatcher } from '@/modules/webhooks/webhooks.dispatcher';
-import { IActivityRepository } from '@/modules/activities/activities.repository';
 import {
   BadRequestException,
   ForbiddenException,
@@ -38,19 +37,7 @@ class PoolService implements IPoolService {
     @inject('IPoolRepository') private poolRepository: IPoolRepository,
     @inject('IGroupRepository') private groupRepository: IGroupRepository,
     @inject(WebhookDispatcher) private webhookDispatcher: WebhookDispatcher,
-    @inject('IActivityRepository') private activityRepository: IActivityRepository,
   ) {}
-
-  private logActivity(
-    actorId: string,
-    poolId: string,
-    type: string,
-    metadata: Record<string, unknown>,
-  ): void {
-    this.activityRepository
-      .create({ id: uuidv4(), actorId, poolId, type, metadata })
-      .catch((err: unknown) => logger.warn(`Failed to log activity (${type}): ${err}`));
-  }
 
   async createPool(groupId: string, userId: string, data: CreatePoolDTO): Promise<IPool> {
     logger.info(`Creating pool "${data.name}" in group ${groupId} by user ${userId}`);
@@ -94,7 +81,6 @@ class PoolService implements IPoolService {
         pool_id: pool.id,
         name: pool.name,
       });
-      this.logActivity(userId, pool.id, 'pool.created', { pool_name: pool.name });
 
       logger.info(`Pool "${pool.name}" (${pool.id}) created in group ${groupId} by user ${userId}`);
       return pool;
@@ -179,7 +165,6 @@ class PoolService implements IPoolService {
       if (data.status === 'settled') {
         logger.info(`Pool ${poolId} marked as settled`);
         this.webhookDispatcher.dispatch(pool.groupId, 'pool.settled', { pool_id: poolId });
-        this.logActivity(userId, poolId, 'pool.settled', {});
       }
 
       logger.info(`Pool ${poolId} updated successfully by user ${userId}`);
@@ -230,7 +215,6 @@ class PoolService implements IPoolService {
         pool_id: poolId,
         user_id: data.userId,
       });
-      this.logActivity(userId, poolId, 'pool.member_added', { target_user_id: data.userId });
 
       logger.info(`Member ${data.userId} added to pool ${poolId} by user ${userId}`);
       return { success: true, message: 'Member added to pool.', data: null };
@@ -274,7 +258,6 @@ class PoolService implements IPoolService {
       }
 
       await this.poolRepository.removeMember(poolId, targetUserId);
-      this.logActivity(adminId, poolId, 'pool.member_removed', { target_user_id: targetUserId });
 
       logger.info(`Member ${targetUserId} removed from pool ${poolId} by admin ${adminId}`);
       return { success: true, message: 'Member removed from pool.', data: null };

@@ -1,5 +1,5 @@
 import { inject, injectable } from 'tsyringe';
-import { IActivityRepository } from './activities.repository';
+import { IActivityRepository, IActivityFilters } from './activities.repository';
 import { IActivityEnriched } from './activities.interface';
 import { IPagination } from '@/common/types/interface';
 import { InternalServerException } from '@/common/exception';
@@ -10,6 +10,7 @@ export interface IActivityService {
     userId: string,
     page: number,
     limit: number,
+    filters?: IActivityFilters,
   ): Promise<IPagination<IActivityEnriched>>;
 }
 
@@ -21,14 +22,18 @@ class ActivityService implements IActivityService {
     userId: string,
     page: number,
     limit: number,
+    filters: IActivityFilters = {},
   ): Promise<IPagination<IActivityEnriched>> {
-    logger.info(`Listing activities for user ${userId}, page ${page}, limit ${limit}`);
+    logger.info(
+      `Listing activities for user ${userId}, page ${page}, limit ${limit}, filters: ${JSON.stringify(filters)}`,
+    );
     try {
       const offset = (page - 1) * limit;
       const { activities, total } = await this.activityRepository.findForUser(
         userId,
         limit,
         offset,
+        filters,
       );
       logger.info(`Found ${total} activity/activities for user ${userId}`);
       return {

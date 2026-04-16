@@ -1,10 +1,17 @@
 import { inject, injectable } from 'tsyringe';
-import { eq, desc, inArray, sql } from 'drizzle-orm';
+import { eq, and, gte, lte, desc, inArray, sql } from 'drizzle-orm';
 import Database from '@/common/lib/database';
 import { ActivitySchema } from './activities.schema';
 import { ExpensePoolSchema, PoolMemberSchema } from '@/modules/pools/pools.schema';
 import { UserSchema } from '@/modules/users/users.schema';
 import { IActivityEnriched } from './activities.interface';
+
+export interface IActivityFilters {
+  poolId?: string;
+  groupId?: string;
+  from?: Date;
+  to?: Date;
+}
 
 export interface IActivityRepository {
   create(data: {
@@ -18,6 +25,7 @@ export interface IActivityRepository {
     userId: string,
     limit: number,
     offset: number,
+    filters?: IActivityFilters,
   ): Promise<{ activities: IActivityEnriched[]; total: number }>;
 }
 
@@ -39,20 +47,49 @@ class ActivityRepositoryImpl implements IActivityRepository {
     userId: string,
     limit: number,
     offset: number,
+    filters: IActivityFilters = {},
   ): Promise<{ activities: IActivityEnriched[]; total: number }> {
-    // Resolve the user's current pool memberships first to avoid duplicate rows
-    const poolRows = await this.db.client
+    // Resolve the user's eligible pool IDs, narrowed by poolId / groupId if provided
+    const membershipQuery = this.db.client
       .select({ poolId: PoolMemberSchema.poolId })
       .from(PoolMemberSchema)
       .where(eq(PoolMemberSchema.userId, userId));
 
+    let poolRows: { poolId: string }[];
+
+    if (filters.poolId) {
+      poolRows = await this.db.client
+        .select({ poolId: PoolMemberSchema.poolId })
+        .from(PoolMemberSchema)
+        .where(
+          and(eq(PoolMemberSchema.userId, userId), eq(PoolMemberSchema.poolId, filters.poolId)),
+        );
+    } else if (filters.groupId) {
+      poolRows = await this.db.client
+        .select({ poolId: PoolMemberSchema.poolId })
+        .from(PoolMemberSchema)
+        .innerJoin(ExpensePoolSchema, eq(ExpensePoolSchema.id, PoolMemberSchema.poolId))
+        .where(
+          and(eq(PoolMemberSchema.userId, userId), eq(ExpensePoolSchema.groupId, filters.groupId)),
+        );
+    } else {
+      poolRows = await membershipQuery;
+    }
+
     const poolIds = poolRows.map((r) => r.poolId);
     if (poolIds.length === 0) return { activities: [], total: 0 };
+
+    const baseConditions = [
+      inArray(ActivitySchema.poolId, poolIds),
+      ...(filters.from ? [gte(ActivitySchema.createdAt, filters.from)] : []),
+      ...(filters.to ? [lte(ActivitySchema.createdAt, filters.to)] : []),
+    ];
+    const condition = and(...baseConditions);
 
     const [countRow] = await this.db.client
       .select({ total: sql<number>`COUNT(*)::int` })
       .from(ActivitySchema)
-      .where(inArray(ActivitySchema.poolId, poolIds));
+      .where(condition);
 
     const rows = await this.db.client
       .select({
@@ -69,7 +106,7 @@ class ActivityRepositoryImpl implements IActivityRepository {
       .from(ActivitySchema)
       .leftJoin(UserSchema, eq(UserSchema.id, ActivitySchema.actorId))
       .leftJoin(ExpensePoolSchema, eq(ExpensePoolSchema.id, ActivitySchema.poolId))
-      .where(inArray(ActivitySchema.poolId, poolIds))
+      .where(condition)
       .orderBy(desc(ActivitySchema.createdAt))
       .limit(limit)
       .offset(offset);
