@@ -8,7 +8,10 @@ import { APP_TOKENS } from '@/common/constants/app.tokens';
 // Module dependencies
 import { registerAuthDependencies } from '@/modules/auth/auth.dependencies';
 import { registerUserDependencies } from '@/modules/users/users.dependencies';
-import { registerGroupDependencies } from '@/modules/groups/groups.dependencies';
+import {
+  registerGroupRepository,
+  registerGroupDependencies,
+} from '@/modules/groups/groups.dependencies';
 import {
   registerWebhookDispatcher,
   registerWebhookDependencies,
@@ -45,8 +48,8 @@ export async function configureContainer(): Promise<void> {
   // 2. Users (IUserRepository needed by auth)
   registerUserDependencies();
   registerAuthDependencies();
-  // 3. Groups (GroupService needs WebhookDispatcher, which is now registered)
-  registerGroupDependencies();
+  // 3. Group repository only — other modules (webhooks, invites, pools) inject IGroupRepository
+  registerGroupRepository();
   // 4. Full webhook module (WebhookService needs IGroupRepository, now registered)
   registerWebhookDependencies();
   // 5. Notifications (needed by invites and other modules for in-app notifications)
@@ -59,9 +62,11 @@ export async function configureContainer(): Promise<void> {
   registerCategoryDependencies();
   // 9. Expenses (needs ICategoryRepository)
   registerExpenseDependencies();
-  // 10. Balances
+  // 10. Groups service + controller (GroupService now also needs IExpenseRepository from step 9)
+  registerGroupDependencies();
+  // 11. Balances
   registerBalanceDependencies();
-  // 11. Settlements
+  // 12. Settlements
   registerSettlementDependencies();
 
   // Seed reference data (idempotent — skips if already populated)

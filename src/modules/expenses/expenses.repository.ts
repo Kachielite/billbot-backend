@@ -1,7 +1,8 @@
 import { inject, injectable } from 'tsyringe';
-import { eq, and, lte, gte, or, isNull, ne, sql } from 'drizzle-orm';
+import { eq, and, lte, gte, or, isNull, ne, sql, inArray } from 'drizzle-orm';
 import Database from '@/common/lib/database';
 import { ExpenseSchema, ExpenseSplitSchema } from './expenses.schema';
+import { ExpensePoolSchema } from '@/modules/pools/pools.schema';
 import { IExpense, IExpenseSplit } from './expenses.interface';
 
 export interface IExpenseRepository {
@@ -45,6 +46,10 @@ export interface IExpenseRepository {
   ): Promise<void>;
   getTotalOwedByUser(userId: string): Promise<number>;
   getTotalOwedToUser(userId: string): Promise<number>;
+  getGroupBalancesForUser(
+    userId: string,
+    groupIds: string[],
+  ): Promise<Map<string, { totalOwed: number; totalOwedToMe: number }>>;
 }
 
 @injectable()
@@ -212,6 +217,34 @@ class ExpenseRepositoryImpl implements IExpenseRepository {
         ),
       );
     return parseFloat(rows[0]?.total ?? '0');
+  }
+
+  async getGroupBalancesForUser(
+    userId: string,
+    groupIds: string[],
+  ): Promise<Map<string, { totalOwed: number; totalOwedToMe: number }>> {
+    if (groupIds.length === 0) return new Map();
+
+    const rows = await this.db.client
+      .select({
+        groupId: ExpensePoolSchema.groupId,
+        totalOwed: sql<string>`COALESCE(SUM(CASE WHEN ${ExpenseSplitSchema.owedBy} = ${userId} AND ${ExpenseSchema.paidBy} != ${userId} AND ${ExpenseSplitSchema.settled} = false THEN ${ExpenseSplitSchema.amount}::numeric ELSE 0 END), 0)`,
+        totalOwedToMe: sql<string>`COALESCE(SUM(CASE WHEN ${ExpenseSchema.paidBy} = ${userId} AND ${ExpenseSplitSchema.owedBy} != ${userId} AND ${ExpenseSplitSchema.settled} = false THEN ${ExpenseSplitSchema.amount}::numeric ELSE 0 END), 0)`,
+      })
+      .from(ExpensePoolSchema)
+      .innerJoin(ExpenseSchema, eq(ExpenseSchema.poolId, ExpensePoolSchema.id))
+      .innerJoin(ExpenseSplitSchema, eq(ExpenseSplitSchema.expenseId, ExpenseSchema.id))
+      .where(inArray(ExpensePoolSchema.groupId, groupIds))
+      .groupBy(ExpensePoolSchema.groupId);
+
+    const map = new Map<string, { totalOwed: number; totalOwedToMe: number }>();
+    for (const row of rows) {
+      map.set(row.groupId, {
+        totalOwed: parseFloat(row.totalOwed),
+        totalOwedToMe: parseFloat(row.totalOwedToMe),
+      });
+    }
+    return map;
   }
 }
 

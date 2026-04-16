@@ -6,12 +6,19 @@ import GroupRepositoryImpl from './groups.repository';
 import { ROUTER_TOKENS } from '@/common/constants/router.tokens';
 import { registerMount } from '@/common/utils/route-registry';
 
-export function registerGroupDependencies(): void {
+/**
+ * Register the repository and router token early — other modules (webhooks, invites, pools)
+ * inject IGroupRepository and/or ROUTER_TOKENS.GROUPS before GroupService is ready.
+ */
+export function registerGroupRepository(): void {
   container.register<express.Router>(ROUTER_TOKENS.GROUPS, {
     useFactory: () => express.Router(),
   });
-
   container.registerSingleton('IGroupRepository', GroupRepositoryImpl);
+}
+
+/** Register the service and controller — called after IExpenseRepository is available. */
+export function registerGroupDependencies(): void {
   container.registerSingleton<GroupService>(GroupService);
   container.registerSingleton<GroupController>(GroupController);
 

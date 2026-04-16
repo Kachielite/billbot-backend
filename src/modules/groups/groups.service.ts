@@ -3,7 +3,8 @@ import { v4 as uuidv4 } from 'uuid';
 import { IGroupRepository } from './groups.repository';
 import { CreateGroupDTO, GroupResponseDTO } from './groups.dto';
 import { IGroupDetail } from './groups.interface';
-import { IGeneralResponse } from '@/common/types/interface';
+import { IGeneralResponse, IPagination } from '@/common/types/interface';
+import { IExpenseRepository } from '@/modules/expenses/expenses.repository';
 import {
   ForbiddenException,
   InternalServerException,
@@ -15,7 +16,12 @@ import { WebhookDispatcher } from '@/modules/webhooks/webhooks.dispatcher';
 
 export interface IGroupService {
   createGroup(userId: string, data: CreateGroupDTO): Promise<GroupResponseDTO>;
-  getUserGroups(userId: string): Promise<GroupResponseDTO[]>;
+  getUserGroups(
+    userId: string,
+    page: number,
+    limit: number,
+    includeMembers: boolean,
+  ): Promise<IPagination<GroupResponseDTO>>;
   getGroupDetail(groupId: string, userId: string): Promise<IGroupDetail>;
   deleteGroup(groupId: string, userId: string): Promise<IGeneralResponse<null>>;
   removeMember(
@@ -29,6 +35,7 @@ export interface IGroupService {
 class GroupService implements IGroupService {
   constructor(
     @inject('IGroupRepository') private groupRepository: IGroupRepository,
+    @inject('IExpenseRepository') private expenseRepository: IExpenseRepository,
     @inject(WebhookDispatcher) private webhookDispatcher: WebhookDispatcher,
   ) {}
 
@@ -63,12 +70,42 @@ class GroupService implements IGroupService {
     }
   }
 
-  async getUserGroups(userId: string): Promise<GroupResponseDTO[]> {
-    logger.info(`Fetching groups for user ${userId}`);
+  async getUserGroups(
+    userId: string,
+    page: number,
+    limit: number,
+    includeMembers: boolean,
+  ): Promise<IPagination<GroupResponseDTO>> {
+    logger.info(
+      `Fetching groups for user ${userId}, page ${page}, limit ${limit}, includeMembers: ${includeMembers}`,
+    );
     try {
-      const groups = await this.groupRepository.findAllForUser(userId);
-      logger.info(`Found ${groups.length} group(s) for user ${userId}`);
-      return groups.map((g) => this.mapToDTO(g));
+      const offset = (page - 1) * limit;
+      const { groups, total } = await this.groupRepository.findAllForUser(userId, limit, offset);
+
+      logger.info(`Found ${total} total group(s) for user ${userId}, returning ${groups.length}`);
+
+      const groupIds = groups.map((g) => g.id);
+
+      // Both lookups are batched — no N+1 regardless of page size
+      const [balanceMap, membersMap] = await Promise.all([
+        this.expenseRepository.getGroupBalancesForUser(userId, groupIds),
+        includeMembers
+          ? this.groupRepository.getMembersForGroups(groupIds)
+          : Promise.resolve(new Map()),
+      ]);
+
+      return {
+        page,
+        limit,
+        total_items: total,
+        pages: Math.ceil(total / limit),
+        items: groups.map((g) => {
+          const bal = balanceMap.get(g.id) ?? { totalOwed: 0, totalOwedToMe: 0 };
+          const members = includeMembers ? (membersMap.get(g.id) ?? []) : undefined;
+          return this.mapToDTO(g, bal, members);
+        }),
+      };
     } catch (error) {
       logger.error(`Error fetching groups for user ${userId}: ${error}`);
       throw new InternalServerException('Failed to fetch groups.');
@@ -178,14 +215,20 @@ class GroupService implements IGroupService {
     }
   }
 
-  private mapToDTO(group: {
-    id: string;
-    name: string;
-    description: string | null;
-    inviteCode: string;
-    createdBy: string | null;
-    createdAt: Date;
-  }): GroupResponseDTO {
+  private mapToDTO(
+    group: {
+      id: string;
+      name: string;
+      description: string | null;
+      inviteCode: string;
+      createdBy: string | null;
+      createdAt: Date;
+      memberCount?: number;
+    },
+    balance: { totalOwed: number; totalOwedToMe: number } = { totalOwed: 0, totalOwedToMe: 0 },
+    members?: IGroupDetail['members'],
+  ): GroupResponseDTO {
+    const netBalance = balance.totalOwedToMe - balance.totalOwed;
     return {
       id: group.id,
       name: group.name,
@@ -193,6 +236,14 @@ class GroupService implements IGroupService {
       invite_code: group.inviteCode,
       created_by: group.createdBy,
       created_at: group.createdAt,
+      member_count: group.memberCount ?? 0,
+      balance: {
+        total_owed: balance.totalOwed,
+        total_owed_to_me: balance.totalOwedToMe,
+        net_balance: netBalance,
+        currency: 'NGN',
+      },
+      ...(members !== undefined && { members }),
     };
   }
 }

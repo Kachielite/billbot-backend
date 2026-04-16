@@ -1,21 +1,32 @@
 import { inject, injectable } from 'tsyringe';
-import { eq, and } from 'drizzle-orm';
+import { eq, and, count, sql, inArray } from 'drizzle-orm';
 import Database from '@/common/lib/database';
 import { GroupSchema, GroupMemberSchema } from './groups.schema';
 import { UserSchema } from '@/modules/users/users.schema';
-import { IGroup, IGroupMember, ICreateGroup, IGroupDetail } from './groups.interface';
+import {
+  IGroup,
+  IGroupMember,
+  ICreateGroup,
+  IGroupDetail,
+  IGroupWithMemberCount,
+} from './groups.interface';
 
 export interface IGroupRepository {
   create(data: ICreateGroup): Promise<IGroup>;
   findById(id: string): Promise<IGroup | null>;
   findByIdWithDetail(id: string): Promise<IGroupDetail | null>;
   findByInviteCode(code: string): Promise<IGroup | null>;
-  findAllForUser(userId: string): Promise<IGroup[]>;
+  findAllForUser(
+    userId: string,
+    limit: number,
+    offset: number,
+  ): Promise<{ groups: IGroupWithMemberCount[]; total: number }>;
   delete(id: string): Promise<void>;
   addMember(groupId: string, userId: string, role?: string): Promise<IGroupMember>;
   removeMember(groupId: string, userId: string): Promise<void>;
   getMember(groupId: string, userId: string): Promise<IGroupMember | null>;
   getAdminCount(groupId: string): Promise<number>;
+  getMembersForGroups(groupIds: string[]): Promise<Map<string, IGroupDetail['members']>>;
 }
 
 @injectable()
@@ -71,13 +82,42 @@ class GroupRepositoryImpl implements IGroupRepository {
     return (rows[0] as unknown as IGroup) ?? null;
   }
 
-  async findAllForUser(userId: string): Promise<IGroup[]> {
+  async findAllForUser(
+    userId: string,
+    limit: number,
+    offset: number,
+  ): Promise<{ groups: IGroupWithMemberCount[]; total: number }> {
+    const [countRow] = await this.db.client
+      .select({ total: sql<number>`COUNT(*)::int` })
+      .from(GroupMemberSchema)
+      .where(eq(GroupMemberSchema.userId, userId));
+
+    const memberCountSq = this.db.client
+      .select({
+        groupId: GroupMemberSchema.groupId,
+        memberCount: count().as('member_count'),
+      })
+      .from(GroupMemberSchema)
+      .groupBy(GroupMemberSchema.groupId)
+      .as('mc');
+
     const rows = await this.db.client
-      .select({ group: GroupSchema })
+      .select({ group: GroupSchema, memberCount: memberCountSq.memberCount })
       .from(GroupMemberSchema)
       .innerJoin(GroupSchema, eq(GroupMemberSchema.groupId, GroupSchema.id))
-      .where(eq(GroupMemberSchema.userId, userId));
-    return rows.map((r) => r.group as unknown as IGroup);
+      .leftJoin(memberCountSq, eq(memberCountSq.groupId, GroupSchema.id))
+      .where(eq(GroupMemberSchema.userId, userId))
+      .orderBy(GroupSchema.createdAt)
+      .limit(limit)
+      .offset(offset);
+
+    return {
+      groups: rows.map((r) => ({
+        ...(r.group as unknown as IGroup),
+        memberCount: r.memberCount ?? 0,
+      })),
+      total: countRow?.total ?? 0,
+    };
   }
 
   async delete(id: string): Promise<void> {
@@ -113,6 +153,31 @@ class GroupRepositoryImpl implements IGroupRepository {
       .from(GroupMemberSchema)
       .where(and(eq(GroupMemberSchema.groupId, groupId), eq(GroupMemberSchema.role, 'admin')));
     return rows.length;
+  }
+
+  async getMembersForGroups(groupIds: string[]): Promise<Map<string, IGroupDetail['members']>> {
+    if (groupIds.length === 0) return new Map();
+
+    const rows = await this.db.client
+      .select({
+        groupId: GroupMemberSchema.groupId,
+        user_id: GroupMemberSchema.userId,
+        name: UserSchema.name,
+        email: UserSchema.email,
+        avatar_url: UserSchema.avatarUrl,
+        role: GroupMemberSchema.role,
+        joined_at: GroupMemberSchema.joinedAt,
+      })
+      .from(GroupMemberSchema)
+      .innerJoin(UserSchema, eq(GroupMemberSchema.userId, UserSchema.id))
+      .where(inArray(GroupMemberSchema.groupId, groupIds));
+
+    const map = new Map<string, IGroupDetail['members']>();
+    for (const { groupId, ...member } of rows) {
+      if (!map.has(groupId)) map.set(groupId, []);
+      map.get(groupId)!.push(member as IGroupDetail['members'][number]);
+    }
+    return map;
   }
 }
 

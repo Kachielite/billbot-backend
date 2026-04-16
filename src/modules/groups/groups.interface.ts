@@ -7,6 +7,10 @@ export interface IGroup {
   createdAt: Date;
 }
 
+export interface IGroupWithMemberCount extends IGroup {
+  memberCount: number;
+}
+
 export interface IGroupMember {
   groupId: string;
   userId: string;

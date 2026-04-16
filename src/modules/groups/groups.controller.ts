@@ -78,32 +78,76 @@ class GroupController extends BaseController {
    *   get:
    *     tags: [Groups]
    *     summary: List my groups
-   *     description: Returns all groups the authenticated user belongs to
+   *     description: Returns paginated groups the authenticated user belongs to, including member count and the user's balance within each group
    *     security:
    *       - bearerAuth: []
+   *     parameters:
+   *       - in: query
+   *         name: page
+   *         schema: { type: integer, default: 1 }
+   *       - in: query
+   *         name: limit
+   *         schema: { type: integer, default: 20 }
+   *       - in: query
+   *         name: include_members
+   *         schema: { type: boolean, default: false }
+   *         description: When true, each group includes a members array with full member details
    *     responses:
    *       '200':
-   *         description: List of groups
+   *         description: Paginated list of groups
    *         content:
    *           application/json:
    *             schema:
-   *               type: array
-   *               items:
-   *                 type: object
-   *                 properties:
-   *                   id: { type: string }
-   *                   name: { type: string }
-   *                   description: { type: string, nullable: true }
-   *                   invite_code: { type: string }
-   *                   created_by: { type: string, nullable: true }
-   *                   created_at: { type: string, format: date-time }
+   *               type: object
+   *               properties:
+   *                 page: { type: integer }
+   *                 limit: { type: integer }
+   *                 total_items: { type: integer }
+   *                 pages: { type: integer }
+   *                 items:
+   *                   type: array
+   *                   items:
+   *                     type: object
+   *                     properties:
+   *                       id: { type: string }
+   *                       name: { type: string }
+   *                       description: { type: string, nullable: true }
+   *                       invite_code: { type: string }
+   *                       created_by: { type: string, nullable: true }
+   *                       created_at: { type: string, format: date-time }
+   *                       member_count: { type: integer }
+   *                       members:
+   *                         type: array
+   *                         description: Only present when include_members=true
+   *                         items:
+   *                           type: object
+   *                           properties:
+   *                             user_id: { type: string }
+   *                             name: { type: string }
+   *                             email: { type: string, nullable: true }
+   *                             avatar_url: { type: string, nullable: true }
+   *                             role: { type: string, enum: [admin, member] }
+   *                             joined_at: { type: string, format: date-time }
+   *                       balance:
+   *                         type: object
+   *                         properties:
+   *                           total_owed: { type: number }
+   *                           total_owed_to_me: { type: number }
+   *                           net_balance: { type: number }
+   *                           currency: { type: string }
    *       '401':
    *         $ref: '#/components/responses/Unauthorized'
    */
   @Get('/')
   async listGroups(req: Request) {
     const userId = (req as unknown as IAuthenticatedRequest).user?.id as string;
-    return this.groupService.getUserGroups(userId);
+    const page = Math.max(1, parseInt(String(req.query['page'] ?? '1'), 10) || 1);
+    const limit = Math.min(
+      100,
+      Math.max(1, parseInt(String(req.query['limit'] ?? '20'), 10) || 20),
+    );
+    const includeMembers = req.query['include_members'] === 'true';
+    return this.groupService.getUserGroups(userId, page, limit, includeMembers);
   }
 
   /**
