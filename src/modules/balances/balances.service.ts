@@ -1,6 +1,7 @@
 import { inject, injectable } from 'tsyringe';
 import { IExpenseRepository } from '@/modules/expenses/expenses.repository';
 import { IPoolRepository } from '@/modules/pools/pools.repository';
+import { IGroupRepository } from '@/modules/groups/groups.repository';
 import {
   ForbiddenException,
   InternalServerException,
@@ -36,6 +37,7 @@ export interface IUserBalanceSummary {
 
 export interface IBalanceService {
   getPoolBalances(poolId: string, userId: string): Promise<IBalanceResult>;
+  getGroupBalances(groupId: string, userId: string): Promise<IBalanceResult>;
   getUserBalanceSummary(userId: string): Promise<IUserBalanceSummary>;
 }
 
@@ -44,6 +46,7 @@ class BalanceService implements IBalanceService {
   constructor(
     @inject('IExpenseRepository') private expenseRepository: IExpenseRepository,
     @inject('IPoolRepository') private poolRepository: IPoolRepository,
+    @inject('IGroupRepository') private groupRepository: IGroupRepository,
   ) {}
 
   async getPoolBalances(poolId: string, userId: string): Promise<IBalanceResult> {
@@ -118,6 +121,84 @@ class BalanceService implements IBalanceService {
         throw error;
       logger.error(`Error calculating balances for pool ${poolId}: ${error}`);
       throw new InternalServerException('Failed to calculate balances.');
+    }
+  }
+
+  async getGroupBalances(groupId: string, userId: string): Promise<IBalanceResult> {
+    logger.info(`Calculating balances for group ${groupId}, requested by user ${userId}`);
+    try {
+      const group = await this.groupRepository.findById(groupId);
+      if (!group) {
+        logger.warn(`Group not found: ${groupId}`);
+        throw new ResourceNotFoundException('Group not found.');
+      }
+
+      const member = await this.groupRepository.getMember(groupId, userId);
+      if (!member) {
+        logger.warn(`User ${userId} is not a member of group ${groupId}`);
+        throw new ForbiddenException('You are not a member of this group.');
+      }
+
+      const membersMap = await this.groupRepository.getMembersForGroups([groupId]);
+      const members = membersMap.get(groupId) ?? [];
+      const memberMap = new Map(members.map((m) => [m.user_id, m]));
+
+      const [expenses, splits] = await Promise.all([
+        this.expenseRepository.findAllByGroup(groupId),
+        this.expenseRepository.getSplitsByGroup(groupId),
+      ]);
+
+      logger.info(
+        `Computing group balances from ${expenses.length} expense(s) and ${splits.length} split(s) for group ${groupId}`,
+      );
+
+      const totals = new Map<string, { paid: number; owed: number }>();
+      for (const m of members) {
+        totals.set(m.user_id, { paid: 0, owed: 0 });
+      }
+
+      for (const expense of expenses) {
+        if (expense.paidBy && totals.has(expense.paidBy)) {
+          totals.get(expense.paidBy)!.paid += parseFloat(expense.amount);
+        }
+      }
+
+      for (const split of splits) {
+        if (split.owedBy && totals.has(split.owedBy)) {
+          totals.get(split.owedBy)!.owed += parseFloat(split.amount);
+        }
+      }
+
+      const memberSummary: IMemberSummary[] = [];
+      const nets = new Map<string, number>();
+
+      for (const [uid, t] of totals) {
+        const m = memberMap.get(uid);
+        if (!m) continue;
+        const net = t.paid - t.owed;
+        nets.set(uid, net);
+        memberSummary.push({
+          user: { id: uid, name: m.name },
+          totalPaid: t.paid,
+          totalOwed: t.owed,
+          netBalance: net,
+        });
+      }
+
+      const poolMemberMap = new Map(
+        members.map((m) => [m.user_id, { userId: m.user_id, name: m.name }]),
+      );
+      const balances = this.simplifyDebts(nets, poolMemberMap);
+
+      logger.info(
+        `Group balance calculation complete for group ${groupId}: ${balances.length} balance entry/entries`,
+      );
+      return { balances, memberSummary };
+    } catch (error) {
+      if (error instanceof ResourceNotFoundException || error instanceof ForbiddenException)
+        throw error;
+      logger.error(`Error calculating balances for group ${groupId}: ${error}`);
+      throw new InternalServerException('Failed to calculate group balances.');
     }
   }
 

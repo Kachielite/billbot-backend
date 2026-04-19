@@ -54,6 +54,8 @@ export interface IExpenseRepository {
     limit: number,
     offset: number,
   ): Promise<{ expenses: IExpense[]; total: number }>;
+  findAllByGroup(groupId: string): Promise<IExpense[]>;
+  getSplitsByGroup(groupId: string): Promise<IExpenseSplit[]>;
   getTotalOwedByUser(userId: string): Promise<number>;
   getTotalOwedToUser(userId: string): Promise<number>;
   getGroupBalancesForUser(
@@ -295,6 +297,25 @@ class ExpenseRepositoryImpl implements IExpenseRepository {
       expenses: rows.map((r) => r.expense) as unknown as IExpense[],
       total: countRow?.total ?? 0,
     };
+  }
+
+  async findAllByGroup(groupId: string): Promise<IExpense[]> {
+    const rows = await this.db.client
+      .select({ expense: ExpenseSchema })
+      .from(ExpenseSchema)
+      .innerJoin(ExpensePoolSchema, eq(ExpenseSchema.poolId, ExpensePoolSchema.id))
+      .where(eq(ExpensePoolSchema.groupId, groupId));
+    return rows.map((r) => r.expense) as unknown as IExpense[];
+  }
+
+  async getSplitsByGroup(groupId: string): Promise<IExpenseSplit[]> {
+    const rows = await this.db.client
+      .select({ split: ExpenseSplitSchema })
+      .from(ExpenseSplitSchema)
+      .innerJoin(ExpenseSchema, eq(ExpenseSplitSchema.expenseId, ExpenseSchema.id))
+      .innerJoin(ExpensePoolSchema, eq(ExpenseSchema.poolId, ExpensePoolSchema.id))
+      .where(and(eq(ExpensePoolSchema.groupId, groupId), eq(ExpenseSplitSchema.settled, false)));
+    return rows.map((r) => r.split) as unknown as IExpenseSplit[];
   }
 
   async getGroupBalancesForUser(

@@ -94,6 +94,84 @@ export default BalanceController;
 
 /**
  * @swagger
+ * /groups/{groupId}/balances:
+ *   get:
+ *     tags: [Balances]
+ *     summary: Get simplified balances for a group
+ *     description: |
+ *       Returns simplified who-owes-who across all pools in the group,
+ *       using a greedy debt simplification algorithm.
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: groupId
+ *         required: true
+ *         schema: { type: string }
+ *     responses:
+ *       '200':
+ *         description: Balance result
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 balances:
+ *                   type: array
+ *                   items:
+ *                     type: object
+ *                     properties:
+ *                       from:
+ *                         type: object
+ *                         properties:
+ *                           id: { type: string }
+ *                           name: { type: string }
+ *                       to:
+ *                         type: object
+ *                         properties:
+ *                           id: { type: string }
+ *                           name: { type: string }
+ *                       amount: { type: number }
+ *                       currency: { type: string }
+ *                 memberSummary:
+ *                   type: array
+ *                   items:
+ *                     type: object
+ *                     properties:
+ *                       user:
+ *                         type: object
+ *                         properties:
+ *                           id: { type: string }
+ *                           name: { type: string }
+ *                       totalPaid: { type: number }
+ *                       totalOwed: { type: number }
+ *                       netBalance: { type: number }
+ *       '403':
+ *         $ref: '#/components/responses/Forbidden'
+ *       '404':
+ *         $ref: '#/components/responses/NotFound'
+ *       '401':
+ *         $ref: '#/components/responses/Unauthorized'
+ */
+@injectable()
+@Controller('/groups')
+export class BalanceGroupController extends BaseController {
+  constructor(
+    @inject(ROUTER_TOKENS.GROUPS) router: express.Router,
+    @inject(BalanceService) private readonly balanceService: IBalanceService,
+  ) {
+    super(router);
+  }
+
+  @Get('/:groupId/balances')
+  async getGroupBalances(req: Request) {
+    const userId = (req as unknown as IAuthenticatedRequest).user?.id as string;
+    return this.balanceService.getGroupBalances(req.params['groupId'] as string, userId);
+  }
+}
+
+/**
+ * @swagger
  * /balances:
  *   get:
  *     tags: [Balances]
