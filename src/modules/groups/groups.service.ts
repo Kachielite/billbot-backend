@@ -24,7 +24,7 @@ export interface IGroupService {
     limit: number,
     includeMembers: boolean,
   ): Promise<IPagination<GroupResponseDTO>>;
-  getGroupDetail(groupId: string, userId: string): Promise<IGroupDetail>;
+  getGroupDetail(groupId: string, userId: string): Promise<GroupResponseDTO>;
   deleteGroup(groupId: string, userId: string): Promise<IGeneralResponse<null>>;
   removeMember(
     groupId: string,
@@ -130,7 +130,7 @@ class GroupService implements IGroupService {
     }
   }
 
-  async getGroupDetail(groupId: string, userId: string): Promise<IGroupDetail> {
+  async getGroupDetail(groupId: string, userId: string): Promise<GroupResponseDTO> {
     logger.info(`Fetching group detail for group ${groupId}, requested by user ${userId}`);
     try {
       const group = await this.groupRepository.findByIdWithDetail(groupId);
@@ -145,8 +145,21 @@ class GroupService implements IGroupService {
         throw new ForbiddenException('You are not a member of this group.');
       }
 
+      const [balanceMap, activePoolCountMap] = await Promise.all([
+        this.expenseRepository.getGroupBalancesForUser(userId, [groupId]),
+        this.poolRepository.getActivePoolCountByGroups([groupId]),
+      ]);
+
+      const bal = balanceMap.get(groupId) ?? { totalOwed: 0, totalOwedToMe: 0 };
+      const activePoolCount = activePoolCountMap.get(groupId) ?? 0;
+
       logger.info(`Group detail fetched for group ${groupId}`);
-      return group;
+      return this.mapToDTO(
+        { ...group, memberCount: group.members.length },
+        bal,
+        group.members,
+        activePoolCount,
+      );
     } catch (error) {
       if (error instanceof ResourceNotFoundException || error instanceof ForbiddenException)
         throw error;
