@@ -18,6 +18,7 @@ import {
   ResourceNotFoundException,
 } from '@/common/exception';
 import logger from '@/common/lib/logger';
+import { getCurrencySymbol } from '@/common/utils/currency';
 
 export interface IExpenseService {
   createExpense(
@@ -430,7 +431,7 @@ class ExpenseService implements IExpenseService {
       pool_id: expense.poolId,
       paid_by: expense.paidBy,
       amount: expense.amount,
-      currency: expense.currency,
+      currency: getCurrencySymbol(expense.currency),
       description: expense.description,
       category_id: expense.categoryId,
       receipt_url: expense.receiptUrl,

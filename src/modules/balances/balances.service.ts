@@ -7,6 +7,7 @@ import {
   ResourceNotFoundException,
 } from '@/common/exception';
 import logger from '@/common/lib/logger';
+import { getCurrencySymbol } from '@/common/utils/currency';
 
 export interface IBalanceEntry {
   from: { id: string; name: string };
@@ -130,7 +131,7 @@ class BalanceService implements IBalanceService {
       logger.info(
         `Balance summary for user ${userId}: owed=${totalOwed}, owed to me=${totalOwedToMe}`,
       );
-      return { totalOwed, totalOwedToMe, currency: 'NGN' };
+      return { totalOwed, totalOwedToMe, currency: getCurrencySymbol('NGN') };
     } catch (error) {
       logger.error(`Error calculating balance summary for user ${userId}: ${error}`);
       throw new InternalServerException('Failed to calculate balance summary.');
@@ -167,7 +168,7 @@ class BalanceService implements IBalanceService {
         from: { id: d.id, name: memberMap.get(d.id)?.name || d.id },
         to: { id: c.id, name: memberMap.get(c.id)?.name || c.id },
         amount: Math.round(settled * 100) / 100,
-        currency: 'NGN',
+        currency: getCurrencySymbol('NGN'),
       });
 
       c.amount -= settled;

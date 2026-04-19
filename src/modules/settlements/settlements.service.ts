@@ -17,6 +17,7 @@ import {
   ResourceNotFoundException,
 } from '@/common/exception';
 import logger from '@/common/lib/logger';
+import { getCurrencySymbol } from '@/common/utils/currency';
 
 export interface ISettlementService {
   createSettlement(
@@ -130,7 +131,7 @@ class SettlementService implements ISettlementService {
       });
 
       logger.info(`Settlement ${settlement.id} created in pool ${poolId}`);
-      return settlement;
+      return this.mapToDTO(settlement);
     } catch (error) {
       if (
         error instanceof ResourceNotFoundException ||
@@ -154,7 +155,7 @@ class SettlementService implements ISettlementService {
 
       const settlements = await this.settlementRepository.findByPool(poolId);
       logger.info(`Found ${settlements.length} settlement(s) for pool ${poolId}`);
-      return settlements;
+      return settlements.map((s) => this.mapToDTO(s));
     } catch (error) {
       if (error instanceof ForbiddenException) throw error;
       logger.error(`Error listing settlements: ${error}`);
@@ -182,7 +183,7 @@ class SettlementService implements ISettlementService {
       }
 
       logger.info(`Settlement ${settlementId} fetched successfully`);
-      return settlement;
+      return this.mapToDTO(settlement);
     } catch (error) {
       if (error instanceof ResourceNotFoundException || error instanceof ForbiddenException)
         throw error;
@@ -315,6 +316,10 @@ class SettlementService implements ISettlementService {
       logger.error(`Error disputing settlement: ${error}`);
       throw new InternalServerException('Failed to dispute settlement.');
     }
+  }
+
+  private mapToDTO(settlement: ISettlement): ISettlement {
+    return { ...settlement, currency: getCurrencySymbol(settlement.currency) };
   }
 
   // Greedy split settlement: mark oldest unsettled splits first until amount is exhausted

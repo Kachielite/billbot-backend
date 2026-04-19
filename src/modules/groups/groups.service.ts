@@ -12,6 +12,7 @@ import {
 } from '@/common/exception';
 import logger from '@/common/lib/logger';
 import { generateInviteCode } from '@/common/utils/otp-generator';
+import { getCurrencySymbol } from '@/common/utils/currency';
 import { WebhookDispatcher } from '@/modules/webhooks/webhooks.dispatcher';
 
 export interface IGroupService {
@@ -54,6 +55,8 @@ class GroupService implements IGroupService {
         id: uuidv4(),
         name: data.name,
         description: data.description ?? null,
+        emoji: data.emoji ?? null,
+        color: data.color ?? null,
         inviteCode,
         createdBy: userId,
       });
@@ -220,6 +223,8 @@ class GroupService implements IGroupService {
       id: string;
       name: string;
       description: string | null;
+      emoji?: string | null;
+      color?: string | null;
       inviteCode: string;
       createdBy: string | null;
       createdAt: Date;
@@ -233,6 +238,8 @@ class GroupService implements IGroupService {
       id: group.id,
       name: group.name,
       description: group.description,
+      emoji: group.emoji ?? null,
+      color: group.color ?? null,
       invite_code: group.inviteCode,
       created_by: group.createdBy,
       created_at: group.createdAt,
@@ -241,7 +248,7 @@ class GroupService implements IGroupService {
         total_owed: balance.totalOwed,
         total_owed_to_me: balance.totalOwedToMe,
         net_balance: netBalance,
-        currency: 'NGN',
+        currency: getCurrencySymbol('NGN'),
       },
       ...(members !== undefined && { members }),
     };
