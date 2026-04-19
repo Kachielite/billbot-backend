@@ -22,6 +22,7 @@ import {
 import { registerInviteDependencies } from '@/modules/invites/invites.dependencies';
 import { registerPoolDependencies } from '@/modules/pools/pools.dependencies';
 import {
+  registerExpenseRepository,
   registerExpenseDependencies,
   startRecurringExpenseScheduler,
 } from '@/modules/expenses/expenses.dependencies';
@@ -62,19 +63,21 @@ export async function configureContainer(): Promise<void> {
   registerInviteDependencies();
   // 7. Activities (IActivityRepository needed by pools, expenses, settlements)
   registerActivityDependencies();
-  // 8. Pools (needed by expenses, balances, settlements)
+  // 8. Expense repository only — PoolService needs IExpenseRepository for activity_status
+  registerExpenseRepository();
+  // 9. Pools (needed by expenses, balances, settlements)
   registerPoolDependencies();
-  // 9. Categories (needed by expenses for FK validation)
+  // 10. Categories (needed by expenses for FK validation)
   registerCategoryDependencies();
-  // 10. Expenses (needs ICategoryRepository + IActivityRepository)
+  // 11. Expenses service + controllers (needs ICategoryRepository + IActivityRepository)
   registerExpenseDependencies();
-  // 11. Groups service + controller (GroupService needs IExpenseRepository from step 10)
+  // 12. Groups service + controller (GroupService needs IExpenseRepository + IPoolRepository)
   registerGroupDependencies();
-  // 12. User controller (UserController needs IExpenseService + ActivityService)
+  // 13. User controller (UserController needs IExpenseService + ActivityService)
   registerUserDependencies();
-  // 13. Balances
+  // 14. Balances
   registerBalanceDependencies();
-  // 14. Settlements (needs IActivityRepository)
+  // 15. Settlements (needs IActivityRepository)
   registerSettlementDependencies();
 
   // Seed reference data (idempotent — skips if already populated)

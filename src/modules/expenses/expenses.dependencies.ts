@@ -8,12 +8,14 @@ import { RecurringExpenseScheduler } from './expenses.scheduler';
 import { ROUTER_TOKENS } from '@/common/constants/router.tokens';
 import { registerMount } from '@/common/utils/route-registry';
 
+export function registerExpenseRepository(): void {
+  container.registerSingleton('IExpenseRepository', ExpenseRepositoryImpl);
+}
+
 export function registerExpenseDependencies(): void {
   container.register<express.Router>(ROUTER_TOKENS.EXPENSES, {
     useFactory: () => express.Router(),
   });
-
-  container.registerSingleton('IExpenseRepository', ExpenseRepositoryImpl);
   container.registerSingleton<ExpenseService>(ExpenseService);
   container.registerSingleton<RecurringExpenseScheduler>(RecurringExpenseScheduler);
   container.registerSingleton<ExpenseController>(ExpenseController);
