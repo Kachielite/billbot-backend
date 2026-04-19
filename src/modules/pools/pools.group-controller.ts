@@ -92,24 +92,37 @@ class PoolGroupController extends BaseController {
    *         name: groupId
    *         required: true
    *         schema: { type: string }
+   *       - in: query
+   *         name: page
+   *         schema: { type: integer, default: 1 }
+   *       - in: query
+   *         name: limit
+   *         schema: { type: integer, default: 20 }
    *     responses:
    *       '200':
-   *         description: Pool list
+   *         description: Paginated pool list
    *         content:
    *           application/json:
    *             schema:
-   *               type: array
-   *               items:
-   *                 type: object
-   *                 properties:
-   *                   id: { type: string }
-   *                   group_id: { type: string }
-   *                   name: { type: string }
-   *                   description: { type: string, nullable: true }
-   *                   status: { type: string, enum: [active, settled, closed] }
-   *                   split_type: { type: string }
-   *                   created_by: { type: string, nullable: true }
-   *                   created_at: { type: string, format: date-time }
+   *               type: object
+   *               properties:
+   *                 page: { type: integer, example: 1 }
+   *                 limit: { type: integer, example: 20 }
+   *                 total_items: { type: integer }
+   *                 pages: { type: integer }
+   *                 items:
+   *                   type: array
+   *                   items:
+   *                     type: object
+   *                     properties:
+   *                       id: { type: string }
+   *                       group_id: { type: string }
+   *                       name: { type: string }
+   *                       description: { type: string, nullable: true }
+   *                       status: { type: string, enum: [active, settled, closed] }
+   *                       activity_status: { type: string, enum: [empty, ongoing, settled] }
+   *                       created_by: { type: string, nullable: true }
+   *                       created_at: { type: string, format: date-time }
    *       '403':
    *         $ref: '#/components/responses/Forbidden'
    *       '401':
@@ -118,7 +131,9 @@ class PoolGroupController extends BaseController {
   @Get('/:groupId/pools')
   async listPools(req: Request) {
     const userId = (req as unknown as IAuthenticatedRequest).user?.id as string;
-    return this.poolService.listPools(req.params['groupId'] as string, userId);
+    const page = parseInt(req.query.page as string) || 1;
+    const limit = parseInt(req.query.limit as string) || 20;
+    return this.poolService.listPools(req.params['groupId'] as string, userId, page, limit);
   }
 }
 

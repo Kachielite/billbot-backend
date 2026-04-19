@@ -1,5 +1,5 @@
 import { inject, injectable } from 'tsyringe';
-import { eq, and, inArray, sql } from 'drizzle-orm';
+import { eq, and, inArray, sql, count } from 'drizzle-orm';
 import Database from '@/common/lib/database';
 import { ExpensePoolSchema, PoolMemberSchema } from './pools.schema';
 import { UserSchema } from '@/modules/users/users.schema';
@@ -15,7 +15,11 @@ export interface IPoolRepository {
     createdBy: string;
   }): Promise<IPool>;
   findById(id: string): Promise<IPool | null>;
-  findByGroup(groupId: string): Promise<IPool[]>;
+  findByGroup(
+    groupId: string,
+    limit: number,
+    offset: number,
+  ): Promise<{ pools: IPool[]; total: number }>;
   findDefaultByGroup(groupId: string): Promise<IPool | null>;
   getActivePoolCountByGroups(groupIds: string[]): Promise<Map<string, number>>;
   update(
@@ -70,12 +74,24 @@ class PoolRepositoryImpl implements IPoolRepository {
     return (rows[0] as unknown as IPool) ?? null;
   }
 
-  async findByGroup(groupId: string): Promise<IPool[]> {
-    const rows = await this.db.client
-      .select()
-      .from(ExpensePoolSchema)
-      .where(eq(ExpensePoolSchema.groupId, groupId));
-    return rows as unknown as IPool[];
+  async findByGroup(
+    groupId: string,
+    limit: number,
+    offset: number,
+  ): Promise<{ pools: IPool[]; total: number }> {
+    const [rows, [{ value: total }]] = await Promise.all([
+      this.db.client
+        .select()
+        .from(ExpensePoolSchema)
+        .where(eq(ExpensePoolSchema.groupId, groupId))
+        .limit(limit)
+        .offset(offset),
+      this.db.client
+        .select({ value: count() })
+        .from(ExpensePoolSchema)
+        .where(eq(ExpensePoolSchema.groupId, groupId)),
+    ]);
+    return { pools: rows as unknown as IPool[], total: Number(total) };
   }
 
   async update(

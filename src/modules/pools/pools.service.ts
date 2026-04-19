@@ -4,7 +4,7 @@ import { IPoolRepository } from './pools.repository';
 import { IPool } from './pools.interface';
 import { CreatePoolDTO, UpdatePoolDTO, AddPoolMemberDTO } from './pools.dto';
 import { IExpenseRepository } from '@/modules/expenses/expenses.repository';
-import { IGeneralResponse } from '@/common/types/interface';
+import { IGeneralResponse, IPagination } from '@/common/types/interface';
 import { IGroupRepository } from '@/modules/groups/groups.repository';
 import { WebhookDispatcher } from '@/modules/webhooks/webhooks.dispatcher';
 import {
@@ -20,7 +20,9 @@ export interface IPoolService {
   listPools(
     groupId: string,
     userId: string,
-  ): Promise<(IPool & { activity_status: 'empty' | 'ongoing' | 'settled' })[]>;
+    page: number,
+    limit: number,
+  ): Promise<IPagination<IPool & { activity_status: 'empty' | 'ongoing' | 'settled' }>>;
   getPoolDetail(poolId: string, userId: string): Promise<IPool & { members: unknown[] }>;
   updatePool(poolId: string, userId: string, data: UpdatePoolDTO): Promise<IPool>;
   addMember(
@@ -104,8 +106,12 @@ class PoolService implements IPoolService {
   async listPools(
     groupId: string,
     userId: string,
-  ): Promise<(IPool & { activity_status: 'empty' | 'ongoing' | 'settled' })[]> {
-    logger.info(`Listing pools for group ${groupId}, requested by user ${userId}`);
+    page: number,
+    limit: number,
+  ): Promise<IPagination<IPool & { activity_status: 'empty' | 'ongoing' | 'settled' }>> {
+    logger.info(
+      `Listing pools for group ${groupId}, page ${page}, limit ${limit}, requested by user ${userId}`,
+    );
     try {
       const member = await this.groupRepository.getMember(groupId, userId);
       if (!member) {
@@ -113,16 +119,23 @@ class PoolService implements IPoolService {
         throw new ForbiddenException('You are not a member of this group.');
       }
 
-      const pools = await this.poolRepository.findByGroup(groupId);
+      const offset = (page - 1) * limit;
+      const { pools, total } = await this.poolRepository.findByGroup(groupId, limit, offset);
       const activityMap = await this.expenseRepository.getActivityStatusByPools(
         pools.map((p) => p.id),
       );
 
-      logger.info(`Found ${pools.length} pool(s) for group ${groupId}`);
-      return pools.map((p) => ({
-        ...p,
-        activity_status: activityMap.get(p.id) ?? 'empty',
-      }));
+      logger.info(`Found ${total} total pool(s) for group ${groupId}, returning ${pools.length}`);
+      return {
+        page,
+        limit,
+        total_items: total,
+        pages: Math.ceil(total / limit),
+        items: pools.map((p) => ({
+          ...p,
+          activity_status: activityMap.get(p.id) ?? 'empty',
+        })),
+      };
     } catch (error) {
       if (error instanceof ForbiddenException) throw error;
       logger.error(`Error listing pools: ${error}`);
