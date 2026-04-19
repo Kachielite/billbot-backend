@@ -1,5 +1,5 @@
 import { inject, injectable } from 'tsyringe';
-import { eq, and } from 'drizzle-orm';
+import { eq, and, inArray, sql } from 'drizzle-orm';
 import Database from '@/common/lib/database';
 import { ExpensePoolSchema, PoolMemberSchema } from './pools.schema';
 import { UserSchema } from '@/modules/users/users.schema';
@@ -17,6 +17,7 @@ export interface IPoolRepository {
   findById(id: string): Promise<IPool | null>;
   findByGroup(groupId: string): Promise<IPool[]>;
   findDefaultByGroup(groupId: string): Promise<IPool | null>;
+  getActivePoolCountByGroups(groupIds: string[]): Promise<Map<string, number>>;
   update(
     id: string,
     data: Partial<{ name: string; description: string | null; status: string }>,
@@ -144,6 +145,39 @@ class PoolRepositoryImpl implements IPoolRepository {
       .where(and(eq(PoolMemberSchema.poolId, poolId), eq(PoolMemberSchema.userId, userId)))
       .limit(1);
     return (rows[0] as unknown as IPoolMember) ?? null;
+  }
+
+  async getActivePoolCountByGroups(groupIds: string[]): Promise<Map<string, number>> {
+    if (groupIds.length === 0) return new Map();
+
+    const rows = await this.db.client
+      .select({
+        groupId: ExpensePoolSchema.groupId,
+        activeCount: sql<number>`COUNT(DISTINCT ${ExpensePoolSchema.id})::int`,
+      })
+      .from(ExpensePoolSchema)
+      .where(
+        and(
+          inArray(ExpensePoolSchema.groupId, groupIds),
+          sql`(
+            NOT EXISTS (
+              SELECT 1 FROM expenses e WHERE e.pool_id = ${ExpensePoolSchema.id}
+            )
+            OR EXISTS (
+              SELECT 1 FROM expenses e
+              JOIN expense_splits s ON s.expense_id = e.id
+              WHERE e.pool_id = ${ExpensePoolSchema.id} AND s.settled = false
+            )
+          )`,
+        ),
+      )
+      .groupBy(ExpensePoolSchema.groupId);
+
+    const map = new Map<string, number>();
+    for (const r of rows) {
+      map.set(r.groupId, r.activeCount);
+    }
+    return map;
   }
 }
 

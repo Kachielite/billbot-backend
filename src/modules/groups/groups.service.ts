@@ -78,7 +78,8 @@ class GroupService implements IGroupService {
       this.webhookDispatcher.dispatch(group.id, 'group.created', { group: this.mapToDTO(group) });
 
       logger.info(`Group "${group.name}" (${group.id}) created successfully by user ${userId}`);
-      return this.mapToDTO(group);
+      // General pool is empty on creation → counts as 1 active pool
+      return this.mapToDTO(group, { totalOwed: 0, totalOwedToMe: 0 }, undefined, 1);
     } catch (error) {
       logger.error(`Error creating group for user ${userId}: ${error}`);
       throw new InternalServerException('Failed to create group.');
@@ -102,12 +103,13 @@ class GroupService implements IGroupService {
 
       const groupIds = groups.map((g) => g.id);
 
-      // Both lookups are batched — no N+1 regardless of page size
-      const [balanceMap, membersMap] = await Promise.all([
+      // All lookups are batched — no N+1 regardless of page size
+      const [balanceMap, membersMap, activePoolCountMap] = await Promise.all([
         this.expenseRepository.getGroupBalancesForUser(userId, groupIds),
         includeMembers
           ? this.groupRepository.getMembersForGroups(groupIds)
           : Promise.resolve(new Map()),
+        this.poolRepository.getActivePoolCountByGroups(groupIds),
       ]);
 
       return {
@@ -118,7 +120,8 @@ class GroupService implements IGroupService {
         items: groups.map((g) => {
           const bal = balanceMap.get(g.id) ?? { totalOwed: 0, totalOwedToMe: 0 };
           const members = includeMembers ? (membersMap.get(g.id) ?? []) : undefined;
-          return this.mapToDTO(g, bal, members);
+          const activePoolCount = activePoolCountMap.get(g.id) ?? 0;
+          return this.mapToDTO(g, bal, members, activePoolCount);
         }),
       };
     } catch (error) {
@@ -244,6 +247,7 @@ class GroupService implements IGroupService {
     },
     balance: { totalOwed: number; totalOwedToMe: number } = { totalOwed: 0, totalOwedToMe: 0 },
     members?: IGroupDetail['members'],
+    activePoolCount = 0,
   ): GroupResponseDTO {
     const netBalance = balance.totalOwedToMe - balance.totalOwed;
     return {
@@ -256,6 +260,7 @@ class GroupService implements IGroupService {
       created_by: group.createdBy,
       created_at: group.createdAt,
       member_count: group.memberCount ?? 0,
+      active_pool_count: activePoolCount,
       balance: {
         total_owed: balance.totalOwed,
         total_owed_to_me: balance.totalOwedToMe,

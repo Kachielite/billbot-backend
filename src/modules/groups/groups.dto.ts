@@ -39,6 +39,7 @@ export const GroupResponseSchema = z.object({
   created_by: z.string().nullable(),
   created_at: z.date(),
   member_count: z.number(),
+  active_pool_count: z.number(),
   balance: GroupBalanceSchema,
   members: z.array(GroupMemberDetailSchema).optional(),
 });
