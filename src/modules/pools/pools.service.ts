@@ -121,9 +121,11 @@ class PoolService implements IPoolService {
 
       const offset = (page - 1) * limit;
       const { pools, total } = await this.poolRepository.findByGroup(groupId, limit, offset);
-      const activityMap = await this.expenseRepository.getActivityStatusByPools(
-        pools.map((p) => p.id),
-      );
+      const poolIds = pools.map((p) => p.id);
+      const [activityMap, expenseCountMap] = await Promise.all([
+        this.expenseRepository.getActivityStatusByPools(poolIds),
+        this.expenseRepository.getExpenseCountByPools(poolIds),
+      ]);
 
       logger.info(`Found ${total} total pool(s) for group ${groupId}, returning ${pools.length}`);
       return {
@@ -134,6 +136,7 @@ class PoolService implements IPoolService {
         items: pools.map((p) => ({
           ...p,
           activity_status: activityMap.get(p.id) ?? 'empty',
+          expense_count: expenseCountMap.get(p.id) ?? 0,
         })),
       };
     } catch (error) {

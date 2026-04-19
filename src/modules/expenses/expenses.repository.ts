@@ -72,6 +72,7 @@ export interface IExpenseRepository {
     userId: string,
     groupIds: string[],
   ): Promise<Map<string, { totalOwed: number; totalOwedToMe: number }>>;
+  getExpenseCountByPools(poolIds: string[]): Promise<Map<string, number>>;
 }
 
 @injectable()
@@ -410,6 +411,25 @@ class ExpenseRepositoryImpl implements IExpenseRepository {
         totalOwed: parseFloat(row.totalOwed),
         totalOwedToMe: parseFloat(row.totalOwedToMe),
       });
+    }
+    return map;
+  }
+
+  async getExpenseCountByPools(poolIds: string[]): Promise<Map<string, number>> {
+    if (poolIds.length === 0) return new Map();
+
+    const rows = await this.db.client
+      .select({
+        poolId: ExpenseSchema.poolId,
+        count: sql<number>`COUNT(${ExpenseSchema.id})::int`,
+      })
+      .from(ExpenseSchema)
+      .where(inArray(ExpenseSchema.poolId, poolIds))
+      .groupBy(ExpenseSchema.poolId);
+
+    const map = new Map<string, number>();
+    for (const row of rows) {
+      if (row.poolId) map.set(row.poolId, row.count);
     }
     return map;
   }
