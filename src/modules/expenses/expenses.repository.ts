@@ -49,6 +49,11 @@ export interface IExpenseRepository {
     limit: number,
     offset: number,
   ): Promise<{ expenses: IExpense[]; total: number }>;
+  findByGroup(
+    groupId: string,
+    limit: number,
+    offset: number,
+  ): Promise<{ expenses: IExpense[]; total: number }>;
   getTotalOwedByUser(userId: string): Promise<number>;
   getTotalOwedToUser(userId: string): Promise<number>;
   getGroupBalancesForUser(
@@ -264,6 +269,32 @@ class ExpenseRepositoryImpl implements IExpenseRepository {
         ),
       );
     return parseFloat(rows[0]?.total ?? '0');
+  }
+
+  async findByGroup(
+    groupId: string,
+    limit: number,
+    offset: number,
+  ): Promise<{ expenses: IExpense[]; total: number }> {
+    const [countRow] = await this.db.client
+      .select({ total: sql<number>`COUNT(*)::int` })
+      .from(ExpenseSchema)
+      .innerJoin(ExpensePoolSchema, eq(ExpenseSchema.poolId, ExpensePoolSchema.id))
+      .where(eq(ExpensePoolSchema.groupId, groupId));
+
+    const rows = await this.db.client
+      .select({ expense: ExpenseSchema })
+      .from(ExpenseSchema)
+      .innerJoin(ExpensePoolSchema, eq(ExpenseSchema.poolId, ExpensePoolSchema.id))
+      .where(eq(ExpensePoolSchema.groupId, groupId))
+      .orderBy(ExpenseSchema.createdAt)
+      .limit(limit)
+      .offset(offset);
+
+    return {
+      expenses: rows.map((r) => r.expense) as unknown as IExpense[],
+      total: countRow?.total ?? 0,
+    };
   }
 
   async getGroupBalancesForUser(

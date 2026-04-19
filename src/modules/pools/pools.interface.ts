@@ -5,6 +5,7 @@ export interface IPool {
   description: string | null;
   status: string;
   splitType: string;
+  isDefault: boolean;
   createdBy: string | null;
   createdAt: Date;
 }

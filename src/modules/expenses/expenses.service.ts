@@ -27,6 +27,12 @@ export interface IExpenseService {
     data: CreateExpenseDTO,
     file?: Express.Multer.File,
   ): Promise<ExpenseResponseDTO>;
+  createExpenseInGroup(
+    groupId: string,
+    userId: string,
+    data: CreateExpenseDTO,
+    file?: Express.Multer.File,
+  ): Promise<ExpenseResponseDTO>;
   parseReceipt(
     file: Express.Multer.File,
   ): Promise<{ parsed: IParsedReceipt | null; receipt_url: string }>;
@@ -43,6 +49,12 @@ export interface IExpenseService {
   deleteExpense(expenseId: string, userId: string): Promise<{ success: boolean; message: string }>;
   cancelRecurrence(expenseId: string, userId: string): Promise<IGeneralResponse<null>>;
   listUpcomingExpenses(
+    userId: string,
+    page: number,
+    limit: number,
+  ): Promise<IPagination<ExpenseResponseDTO>>;
+  listExpensesByGroup(
+    groupId: string,
     userId: string,
     page: number,
     limit: number,
@@ -411,6 +423,64 @@ class ExpenseService implements IExpenseService {
     } catch (error) {
       logger.error(`Error listing upcoming expenses for user ${userId}: ${error}`);
       throw new InternalServerException('Failed to list upcoming expenses.');
+    }
+  }
+
+  async createExpenseInGroup(
+    groupId: string,
+    userId: string,
+    data: CreateExpenseDTO,
+    file?: Express.Multer.File,
+  ): Promise<ExpenseResponseDTO> {
+    logger.info(`Creating expense in group ${groupId} by user ${userId} (resolving General pool)`);
+    try {
+      const generalPool = await this.poolRepository.findDefaultByGroup(groupId);
+      if (!generalPool) {
+        logger.warn(`No General pool found for group ${groupId}`);
+        throw new ResourceNotFoundException('General pool not found for this group.');
+      }
+
+      // Ensure user is a pool member (lazy add for members who joined before General pool existed)
+      const poolMember = await this.poolRepository.getMember(generalPool.id, userId);
+      if (!poolMember) {
+        await this.poolRepository.addMember(generalPool.id, userId);
+        logger.info(`Auto-added user ${userId} to General pool ${generalPool.id}`);
+      }
+
+      return this.createExpense(generalPool.id, userId, data, file);
+    } catch (error) {
+      if (
+        error instanceof ResourceNotFoundException ||
+        error instanceof ForbiddenException ||
+        error instanceof BadRequestException
+      )
+        throw error;
+      logger.error(`Error creating group expense for group ${groupId}: ${error}`);
+      throw new InternalServerException('Failed to create expense.');
+    }
+  }
+
+  async listExpensesByGroup(
+    groupId: string,
+    userId: string,
+    page: number,
+    limit: number,
+  ): Promise<IPagination<ExpenseResponseDTO>> {
+    logger.info(`Listing expenses for group ${groupId}, requested by user ${userId}`);
+    try {
+      const offset = (page - 1) * limit;
+      const { expenses, total } = await this.expenseRepository.findByGroup(groupId, limit, offset);
+      logger.info(`Found ${total} expense(s) for group ${groupId}`);
+      return {
+        page,
+        limit,
+        total_items: total,
+        pages: Math.ceil(total / limit),
+        items: expenses.map((e) => this.mapToDTO(e)),
+      };
+    } catch (error) {
+      logger.error(`Error listing expenses for group ${groupId}: ${error}`);
+      throw new InternalServerException('Failed to list expenses.');
     }
   }
 

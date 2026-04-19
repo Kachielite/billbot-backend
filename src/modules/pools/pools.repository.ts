@@ -11,19 +11,19 @@ export interface IPoolRepository {
     groupId: string;
     name: string;
     description?: string | null;
+    isDefault?: boolean;
     createdBy: string;
   }): Promise<IPool>;
   findById(id: string): Promise<IPool | null>;
   findByGroup(groupId: string): Promise<IPool[]>;
+  findDefaultByGroup(groupId: string): Promise<IPool | null>;
   update(
     id: string,
     data: Partial<{ name: string; description: string | null; status: string }>,
   ): Promise<IPool>;
   addMember(poolId: string, userId: string): Promise<IPoolMember>;
   removeMember(poolId: string, userId: string): Promise<void>;
-  getMembers(
-    poolId: string,
-  ): Promise<
+  getMembers(poolId: string): Promise<
     Array<{
       userId: string;
       name: string;
@@ -44,10 +44,20 @@ class PoolRepositoryImpl implements IPoolRepository {
     groupId: string;
     name: string;
     description?: string | null;
+    isDefault?: boolean;
     createdBy: string;
   }): Promise<IPool> {
     const [row] = await this.db.client.insert(ExpensePoolSchema).values(data).returning();
     return row as unknown as IPool;
+  }
+
+  async findDefaultByGroup(groupId: string): Promise<IPool | null> {
+    const rows = await this.db.client
+      .select()
+      .from(ExpensePoolSchema)
+      .where(and(eq(ExpensePoolSchema.groupId, groupId), eq(ExpensePoolSchema.isDefault, true)))
+      .limit(1);
+    return (rows[0] as unknown as IPool) ?? null;
   }
 
   async findById(id: string): Promise<IPool | null> {
@@ -98,9 +108,7 @@ class PoolRepositoryImpl implements IPoolRepository {
       .where(and(eq(PoolMemberSchema.poolId, poolId), eq(PoolMemberSchema.userId, userId)));
   }
 
-  async getMembers(
-    poolId: string,
-  ): Promise<
+  async getMembers(poolId: string): Promise<
     Array<{
       userId: string;
       name: string;

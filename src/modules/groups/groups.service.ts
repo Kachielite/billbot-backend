@@ -5,6 +5,7 @@ import { CreateGroupDTO, GroupResponseDTO } from './groups.dto';
 import { IGroupDetail } from './groups.interface';
 import { IGeneralResponse, IPagination } from '@/common/types/interface';
 import { IExpenseRepository } from '@/modules/expenses/expenses.repository';
+import { IPoolRepository } from '@/modules/pools/pools.repository';
 import {
   ForbiddenException,
   InternalServerException,
@@ -37,6 +38,7 @@ class GroupService implements IGroupService {
   constructor(
     @inject('IGroupRepository') private groupRepository: IGroupRepository,
     @inject('IExpenseRepository') private expenseRepository: IExpenseRepository,
+    @inject('IPoolRepository') private poolRepository: IPoolRepository,
     @inject(WebhookDispatcher) private webhookDispatcher: WebhookDispatcher,
   ) {}
 
@@ -62,6 +64,16 @@ class GroupService implements IGroupService {
       });
 
       await this.groupRepository.addMember(group.id, userId, 'admin');
+
+      const generalPool = await this.poolRepository.create({
+        id: uuidv4(),
+        groupId: group.id,
+        name: 'General',
+        description: null,
+        isDefault: true,
+        createdBy: userId,
+      });
+      await this.poolRepository.addMember(generalPool.id, userId);
 
       this.webhookDispatcher.dispatch(group.id, 'group.created', { group: this.mapToDTO(group) });
 
