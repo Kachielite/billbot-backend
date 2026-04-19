@@ -293,7 +293,19 @@ class ExpenseController extends BaseController {
     const userId = (req as unknown as IAuthenticatedRequest).user?.id as string;
     const page = parseInt(req.query.page as string) || 1;
     const limit = parseInt(req.query.limit as string) || 20;
-    return this.expenseService.listExpenses(req.params['poolId'] as string, userId, page, limit);
+    const rawStatus = req.query.status as string | undefined;
+    const filter: import('./expenses.interface').IExpenseFilter = {
+      status: rawStatus === 'pending' || rawStatus === 'settled' ? rawStatus : undefined,
+      from: req.query.from ? new Date(req.query.from as string) : undefined,
+      to: req.query.to ? new Date(req.query.to as string) : undefined,
+    };
+    return this.expenseService.listExpenses(
+      req.params['poolId'] as string,
+      userId,
+      page,
+      limit,
+      filter,
+    );
   }
 
   /**

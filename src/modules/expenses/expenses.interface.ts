@@ -24,6 +24,12 @@ export interface IExpenseSplit {
   settledAt: Date | null;
 }
 
+export interface IExpenseFilter {
+  status?: 'pending' | 'settled';
+  from?: Date;
+  to?: Date;
+}
+
 export interface IParsedReceipt {
   amount: number | null;
   currency: string | null;

@@ -1,7 +1,7 @@
 import { inject, injectable } from 'tsyringe';
 import { v4 as uuidv4 } from 'uuid';
 import { IExpenseRepository } from './expenses.repository';
-import { IExpense, IParsedReceipt } from './expenses.interface';
+import { IExpense, IExpenseFilter, IParsedReceipt } from './expenses.interface';
 import { CreateExpenseDTO, ExpenseResponseDTO } from './expenses.dto';
 import { RecurrenceFrequency } from './expenses.enum';
 import { IPagination, IGeneralResponse } from '@/common/types/interface';
@@ -41,6 +41,7 @@ export interface IExpenseService {
     userId: string,
     page: number,
     limit: number,
+    filter?: IExpenseFilter,
   ): Promise<IPagination<ExpenseResponseDTO>>;
   getExpense(
     expenseId: string,
@@ -58,6 +59,7 @@ export interface IExpenseService {
     userId: string,
     page: number,
     limit: number,
+    filter?: IExpenseFilter,
   ): Promise<IPagination<ExpenseResponseDTO>>;
 }
 
@@ -229,6 +231,7 @@ class ExpenseService implements IExpenseService {
     userId: string,
     page: number,
     limit: number,
+    filter?: IExpenseFilter,
   ): Promise<IPagination<ExpenseResponseDTO>> {
     logger.info(
       `Listing expenses for pool ${poolId}, page ${page}, limit ${limit}, requested by user ${userId}`,
@@ -240,18 +243,21 @@ class ExpenseService implements IExpenseService {
         throw new ForbiddenException('You are not a member of this pool.');
       }
 
-      const allExpenses = await this.expenseRepository.findByPool(poolId);
-      const total = allExpenses.length;
-      const start = (page - 1) * limit;
-      const paged = allExpenses.slice(start, start + limit);
+      const offset = (page - 1) * limit;
+      const { expenses, total } = await this.expenseRepository.findByPool(
+        poolId,
+        limit,
+        offset,
+        filter,
+      );
 
-      logger.info(`Returning ${paged.length} of ${total} expense(s) for pool ${poolId}`);
+      logger.info(`Returning ${expenses.length} of ${total} expense(s) for pool ${poolId}`);
       return {
         page,
         limit,
         total_items: total,
         pages: Math.ceil(total / limit),
-        items: paged.map((e) => this.mapToDTO(e)),
+        items: expenses.map((e) => this.mapToDTO(e)),
       };
     } catch (error) {
       if (error instanceof ForbiddenException) throw error;
@@ -465,11 +471,17 @@ class ExpenseService implements IExpenseService {
     userId: string,
     page: number,
     limit: number,
+    filter?: IExpenseFilter,
   ): Promise<IPagination<ExpenseResponseDTO>> {
     logger.info(`Listing expenses for group ${groupId}, requested by user ${userId}`);
     try {
       const offset = (page - 1) * limit;
-      const { expenses, total } = await this.expenseRepository.findByGroup(groupId, limit, offset);
+      const { expenses, total } = await this.expenseRepository.findByGroup(
+        groupId,
+        limit,
+        offset,
+        filter,
+      );
       logger.info(`Found ${total} expense(s) for group ${groupId}`);
       return {
         page,

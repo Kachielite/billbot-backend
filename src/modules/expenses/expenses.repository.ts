@@ -3,7 +3,7 @@ import { eq, and, lte, gte, gt, or, isNull, ne, sql, inArray } from 'drizzle-orm
 import Database from '@/common/lib/database';
 import { ExpenseSchema, ExpenseSplitSchema } from './expenses.schema';
 import { ExpensePoolSchema, PoolMemberSchema } from '@/modules/pools/pools.schema';
-import { IExpense, IExpenseSplit } from './expenses.interface';
+import { IExpense, IExpenseFilter, IExpenseSplit } from './expenses.interface';
 
 export interface IExpenseRepository {
   create(data: {
@@ -22,7 +22,15 @@ export interface IExpenseRepository {
     nextOccurrenceAt?: Date | null;
   }): Promise<IExpense>;
   findById(id: string): Promise<IExpense | null>;
-  findByPool(poolId: string): Promise<IExpense[]>;
+  findByPool(
+    poolId: string,
+    limit: number,
+    offset: number,
+    filter?: IExpenseFilter,
+  ): Promise<{ expenses: IExpense[]; total: number }>;
+  getActivityStatusByPools(
+    poolIds: string[],
+  ): Promise<Map<string, 'empty' | 'ongoing' | 'settled'>>;
   delete(id: string): Promise<void>;
   createSplit(data: {
     id: string;
@@ -53,7 +61,9 @@ export interface IExpenseRepository {
     groupId: string,
     limit: number,
     offset: number,
+    filter?: IExpenseFilter,
   ): Promise<{ expenses: IExpense[]; total: number }>;
+  findAllByPool(poolId: string): Promise<IExpense[]>;
   findAllByGroup(groupId: string): Promise<IExpense[]>;
   getSplitsByGroup(groupId: string): Promise<IExpenseSplit[]>;
   getTotalOwedByUser(userId: string): Promise<number>;
@@ -96,12 +106,58 @@ class ExpenseRepositoryImpl implements IExpenseRepository {
     return (rows[0] as unknown as IExpense) ?? null;
   }
 
-  async findByPool(poolId: string): Promise<IExpense[]> {
+  async findByPool(
+    poolId: string,
+    limit: number,
+    offset: number,
+    filter?: IExpenseFilter,
+  ): Promise<{ expenses: IExpense[]; total: number }> {
+    const conditions = this.buildExpenseConditions(eq(ExpenseSchema.poolId, poolId), filter);
+
+    const [countRow] = await this.db.client
+      .select({ total: sql<number>`COUNT(*)::int` })
+      .from(ExpenseSchema)
+      .where(conditions);
+
     const rows = await this.db.client
       .select()
       .from(ExpenseSchema)
-      .where(eq(ExpenseSchema.poolId, poolId));
-    return rows as unknown as IExpense[];
+      .where(conditions)
+      .orderBy(ExpenseSchema.createdAt)
+      .limit(limit)
+      .offset(offset);
+
+    return { expenses: rows as unknown as IExpense[], total: countRow?.total ?? 0 };
+  }
+
+  async getActivityStatusByPools(
+    poolIds: string[],
+  ): Promise<Map<string, 'empty' | 'ongoing' | 'settled'>> {
+    if (poolIds.length === 0) return new Map();
+
+    const rows = await this.db.client
+      .select({
+        poolId: ExpenseSchema.poolId,
+        hasExpenses: sql<number>`COUNT(DISTINCT ${ExpenseSchema.id})::int`,
+        unsettledSplits: sql<number>`COUNT(CASE WHEN ${ExpenseSplitSchema.settled} = false THEN 1 END)::int`,
+      })
+      .from(ExpensePoolSchema)
+      .leftJoin(ExpenseSchema, eq(ExpenseSchema.poolId, ExpensePoolSchema.id))
+      .leftJoin(ExpenseSplitSchema, eq(ExpenseSplitSchema.expenseId, ExpenseSchema.id))
+      .where(inArray(ExpensePoolSchema.id, poolIds))
+      .groupBy(ExpenseSchema.poolId, ExpensePoolSchema.id);
+
+    const map = new Map<string, 'empty' | 'ongoing' | 'settled'>();
+    for (const r of rows) {
+      if (!r.poolId) continue;
+      const status = r.hasExpenses === 0 ? 'empty' : r.unsettledSplits > 0 ? 'ongoing' : 'settled';
+      map.set(r.poolId, status);
+    }
+    // Pools with no rows (no expenses, no splits) default to empty
+    for (const id of poolIds) {
+      if (!map.has(id)) map.set(id, 'empty');
+    }
+    return map;
   }
 
   async delete(id: string): Promise<void> {
@@ -277,18 +333,22 @@ class ExpenseRepositoryImpl implements IExpenseRepository {
     groupId: string,
     limit: number,
     offset: number,
+    filter?: IExpenseFilter,
   ): Promise<{ expenses: IExpense[]; total: number }> {
+    const baseCondition = eq(ExpensePoolSchema.groupId, groupId);
+    const conditions = this.buildExpenseConditions(baseCondition, filter);
+
     const [countRow] = await this.db.client
       .select({ total: sql<number>`COUNT(*)::int` })
       .from(ExpenseSchema)
       .innerJoin(ExpensePoolSchema, eq(ExpenseSchema.poolId, ExpensePoolSchema.id))
-      .where(eq(ExpensePoolSchema.groupId, groupId));
+      .where(conditions);
 
     const rows = await this.db.client
       .select({ expense: ExpenseSchema })
       .from(ExpenseSchema)
       .innerJoin(ExpensePoolSchema, eq(ExpenseSchema.poolId, ExpensePoolSchema.id))
-      .where(eq(ExpensePoolSchema.groupId, groupId))
+      .where(conditions)
       .orderBy(ExpenseSchema.createdAt)
       .limit(limit)
       .offset(offset);
@@ -297,6 +357,14 @@ class ExpenseRepositoryImpl implements IExpenseRepository {
       expenses: rows.map((r) => r.expense) as unknown as IExpense[],
       total: countRow?.total ?? 0,
     };
+  }
+
+  async findAllByPool(poolId: string): Promise<IExpense[]> {
+    const rows = await this.db.client
+      .select()
+      .from(ExpenseSchema)
+      .where(eq(ExpenseSchema.poolId, poolId));
+    return rows as unknown as IExpense[];
   }
 
   async findAllByGroup(groupId: string): Promise<IExpense[]> {
@@ -344,6 +412,25 @@ class ExpenseRepositoryImpl implements IExpenseRepository {
       });
     }
     return map;
+  }
+
+  private buildExpenseConditions(base: ReturnType<typeof eq>, filter?: IExpenseFilter) {
+    const parts: ReturnType<typeof eq>[] = [base];
+
+    if (filter?.from) parts.push(gte(ExpenseSchema.createdAt, filter.from) as never);
+    if (filter?.to) parts.push(lte(ExpenseSchema.createdAt, filter.to) as never);
+
+    if (filter?.status === 'pending') {
+      parts.push(
+        sql`EXISTS (SELECT 1 FROM expense_splits s WHERE s.expense_id = ${ExpenseSchema.id} AND s.settled = false)` as never,
+      );
+    } else if (filter?.status === 'settled') {
+      parts.push(
+        sql`NOT EXISTS (SELECT 1 FROM expense_splits s WHERE s.expense_id = ${ExpenseSchema.id} AND s.settled = false)` as never,
+      );
+    }
+
+    return parts.length === 1 ? parts[0] : and(...(parts as Parameters<typeof and>));
   }
 }
 

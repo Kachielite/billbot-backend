@@ -3,6 +3,7 @@ import { v4 as uuidv4 } from 'uuid';
 import { IPoolRepository } from './pools.repository';
 import { IPool } from './pools.interface';
 import { CreatePoolDTO, UpdatePoolDTO, AddPoolMemberDTO } from './pools.dto';
+import { IExpenseRepository } from '@/modules/expenses/expenses.repository';
 import { IGeneralResponse } from '@/common/types/interface';
 import { IGroupRepository } from '@/modules/groups/groups.repository';
 import { WebhookDispatcher } from '@/modules/webhooks/webhooks.dispatcher';
@@ -16,7 +17,10 @@ import logger from '@/common/lib/logger';
 
 export interface IPoolService {
   createPool(groupId: string, userId: string, data: CreatePoolDTO): Promise<IPool>;
-  listPools(groupId: string, userId: string): Promise<IPool[]>;
+  listPools(
+    groupId: string,
+    userId: string,
+  ): Promise<(IPool & { activity_status: 'empty' | 'ongoing' | 'settled' })[]>;
   getPoolDetail(poolId: string, userId: string): Promise<IPool & { members: unknown[] }>;
   updatePool(poolId: string, userId: string, data: UpdatePoolDTO): Promise<IPool>;
   addMember(
@@ -36,6 +40,7 @@ class PoolService implements IPoolService {
   constructor(
     @inject('IPoolRepository') private poolRepository: IPoolRepository,
     @inject('IGroupRepository') private groupRepository: IGroupRepository,
+    @inject('IExpenseRepository') private expenseRepository: IExpenseRepository,
     @inject(WebhookDispatcher) private webhookDispatcher: WebhookDispatcher,
   ) {}
 
@@ -96,7 +101,10 @@ class PoolService implements IPoolService {
     }
   }
 
-  async listPools(groupId: string, userId: string): Promise<IPool[]> {
+  async listPools(
+    groupId: string,
+    userId: string,
+  ): Promise<(IPool & { activity_status: 'empty' | 'ongoing' | 'settled' })[]> {
     logger.info(`Listing pools for group ${groupId}, requested by user ${userId}`);
     try {
       const member = await this.groupRepository.getMember(groupId, userId);
@@ -106,8 +114,15 @@ class PoolService implements IPoolService {
       }
 
       const pools = await this.poolRepository.findByGroup(groupId);
+      const activityMap = await this.expenseRepository.getActivityStatusByPools(
+        pools.map((p) => p.id),
+      );
+
       logger.info(`Found ${pools.length} pool(s) for group ${groupId}`);
-      return pools;
+      return pools.map((p) => ({
+        ...p,
+        activity_status: activityMap.get(p.id) ?? 'empty',
+      }));
     } catch (error) {
       if (error instanceof ForbiddenException) throw error;
       logger.error(`Error listing pools: ${error}`);

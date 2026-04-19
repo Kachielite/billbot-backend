@@ -67,7 +67,7 @@ class BalanceService implements IBalanceService {
       const members = await this.poolRepository.getMembers(poolId);
       const memberMap = new Map(members.map((m) => [m.userId, m]));
 
-      const expenses = await this.expenseRepository.findByPool(poolId);
+      const expenses = await this.expenseRepository.findAllByPool(poolId);
       const splits = await this.expenseRepository.getSplitsByPool(poolId);
 
       logger.info(
