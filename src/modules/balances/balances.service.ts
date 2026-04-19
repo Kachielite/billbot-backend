@@ -19,19 +19,19 @@ export interface IBalanceEntry {
 
 export interface IMemberSummary {
   user: { id: string; name: string };
-  totalPaid: number;
-  totalOwed: number;
-  netBalance: number;
+  total_paid: number;
+  total_owed: number;
+  net_balance: number;
 }
 
 export interface IBalanceResult {
   balances: IBalanceEntry[];
-  memberSummary: IMemberSummary[];
+  member_summary: IMemberSummary[];
 }
 
 export interface IUserBalanceSummary {
-  totalOwed: number;
-  totalOwedToMe: number;
+  total_owed: number;
+  total_owed_to_me: number;
   currency: string;
 }
 
@@ -93,7 +93,7 @@ class BalanceService implements IBalanceService {
       }
 
       // Member summaries
-      const memberSummary: IMemberSummary[] = [];
+      const member_summary: IMemberSummary[] = [];
       const nets = new Map<string, number>();
 
       for (const [uid, t] of totals) {
@@ -101,11 +101,11 @@ class BalanceService implements IBalanceService {
         if (!m) continue;
         const net = t.paid - t.owed;
         nets.set(uid, net);
-        memberSummary.push({
+        member_summary.push({
           user: { id: uid, name: m.name },
-          totalPaid: t.paid,
-          totalOwed: t.owed,
-          netBalance: net,
+          total_paid: t.paid,
+          total_owed: t.owed,
+          net_balance: net,
         });
       }
 
@@ -115,7 +115,7 @@ class BalanceService implements IBalanceService {
       logger.info(
         `Balance calculation complete for pool ${poolId}: ${balances.length} balance entry/entries`,
       );
-      return { balances, memberSummary };
+      return { balances, member_summary };
     } catch (error) {
       if (error instanceof ResourceNotFoundException || error instanceof ForbiddenException)
         throw error;
@@ -169,7 +169,7 @@ class BalanceService implements IBalanceService {
         }
       }
 
-      const memberSummary: IMemberSummary[] = [];
+      const member_summary: IMemberSummary[] = [];
       const nets = new Map<string, number>();
 
       for (const [uid, t] of totals) {
@@ -177,11 +177,11 @@ class BalanceService implements IBalanceService {
         if (!m) continue;
         const net = t.paid - t.owed;
         nets.set(uid, net);
-        memberSummary.push({
+        member_summary.push({
           user: { id: uid, name: m.name },
-          totalPaid: t.paid,
-          totalOwed: t.owed,
-          netBalance: net,
+          total_paid: t.paid,
+          total_owed: t.owed,
+          net_balance: net,
         });
       }
 
@@ -193,7 +193,7 @@ class BalanceService implements IBalanceService {
       logger.info(
         `Group balance calculation complete for group ${groupId}: ${balances.length} balance entry/entries`,
       );
-      return { balances, memberSummary };
+      return { balances, member_summary };
     } catch (error) {
       if (error instanceof ResourceNotFoundException || error instanceof ForbiddenException)
         throw error;
@@ -212,7 +212,11 @@ class BalanceService implements IBalanceService {
       logger.info(
         `Balance summary for user ${userId}: owed=${totalOwed}, owed to me=${totalOwedToMe}`,
       );
-      return { totalOwed, totalOwedToMe, currency: getCurrencySymbol('NGN') };
+      return {
+        total_owed: totalOwed,
+        total_owed_to_me: totalOwedToMe,
+        currency: getCurrencySymbol('NGN'),
+      };
     } catch (error) {
       logger.error(`Error calculating balance summary for user ${userId}: ${error}`);
       throw new InternalServerException('Failed to calculate balance summary.');

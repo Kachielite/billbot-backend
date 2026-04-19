@@ -63,7 +63,7 @@ class BalanceController extends BaseController {
    *                           name: { type: string }
    *                       amount: { type: number }
    *                       currency: { type: string }
-   *                 memberSummary:
+   *                 member_summary:
    *                   type: array
    *                   items:
    *                     type: object
@@ -73,9 +73,9 @@ class BalanceController extends BaseController {
    *                         properties:
    *                           id: { type: string }
    *                           name: { type: string }
-   *                       totalPaid: { type: number }
-   *                       totalOwed: { type: number }
-   *                       netBalance: { type: number }
+   *                       total_paid: { type: number }
+   *                       total_owed: { type: number }
+   *                       net_balance: { type: number }
    *       '403':
    *         $ref: '#/components/responses/Forbidden'
    *       '404':
@@ -133,7 +133,7 @@ export default BalanceController;
  *                           name: { type: string }
  *                       amount: { type: number }
  *                       currency: { type: string }
- *                 memberSummary:
+ *                 member_summary:
  *                   type: array
  *                   items:
  *                     type: object
@@ -143,9 +143,9 @@ export default BalanceController;
  *                         properties:
  *                           id: { type: string }
  *                           name: { type: string }
- *                       totalPaid: { type: number }
- *                       totalOwed: { type: number }
- *                       netBalance: { type: number }
+ *                       total_paid: { type: number }
+ *                       total_owed: { type: number }
+ *                       net_balance: { type: number }
  *       '403':
  *         $ref: '#/components/responses/Forbidden'
  *       '404':
@@ -189,10 +189,10 @@ export class BalanceGroupController extends BaseController {
  *             schema:
  *               type: object
  *               properties:
- *                 totalOwed:
+ *                 total_owed:
  *                   type: number
  *                   description: Total amount the user owes others (unsettled splits)
- *                 totalOwedToMe:
+ *                 total_owed_to_me:
  *                   type: number
  *                   description: Total amount others owe the user (unsettled splits)
  *                 currency:
