@@ -317,6 +317,59 @@ class GroupController extends BaseController {
       req.params['userId'] as string,
     );
   }
+
+  /**
+   * @swagger
+   * /groups/{groupId}/members/{userId}/role:
+   *   patch:
+   *     tags: [Groups]
+   *     summary: Update a member's role
+   *     description: Admin only. Cannot demote the last admin.
+   *     security:
+   *       - bearerAuth: []
+   *     parameters:
+   *       - in: path
+   *         name: groupId
+   *         required: true
+   *         schema: { type: string }
+   *       - in: path
+   *         name: userId
+   *         required: true
+   *         schema: { type: string }
+   *     requestBody:
+   *       required: true
+   *       content:
+   *         application/json:
+   *           schema:
+   *             type: object
+   *             required: [role]
+   *             properties:
+   *               role:
+   *                 type: string
+   *                 enum: [admin, member]
+   *     responses:
+   *       '200':
+   *         description: Role updated
+   *       '400':
+   *         $ref: '#/components/responses/BadRequest'
+   *       '403':
+   *         $ref: '#/components/responses/Forbidden'
+   *       '404':
+   *         $ref: '#/components/responses/NotFound'
+   *       '401':
+   *         $ref: '#/components/responses/Unauthorized'
+   */
+  @Patch('/:groupId/members/:userId/role')
+  async updateMemberRole(req: Request) {
+    const adminId = (req as unknown as IAuthenticatedRequest).user?.id as string;
+    const { role } = req.body as { role: 'admin' | 'member' };
+    return this.groupService.updateMemberRole(
+      req.params['groupId'] as string,
+      adminId,
+      req.params['userId'] as string,
+      role,
+    );
+  }
 }
 
 export default GroupController;

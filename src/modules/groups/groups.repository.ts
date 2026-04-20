@@ -34,6 +34,7 @@ export interface IGroupRepository {
   addMember(groupId: string, userId: string, role?: string): Promise<IGroupMember>;
   removeMember(groupId: string, userId: string): Promise<void>;
   getMember(groupId: string, userId: string): Promise<IGroupMember | null>;
+  updateMemberRole(groupId: string, userId: string, role: string): Promise<IGroupMember>;
   getAdminCount(groupId: string): Promise<number>;
   getMembersForGroups(groupIds: string[]): Promise<Map<string, IGroupDetail['members']>>;
 }
@@ -171,6 +172,15 @@ class GroupRepositoryImpl implements IGroupRepository {
       .where(and(eq(GroupMemberSchema.groupId, groupId), eq(GroupMemberSchema.userId, userId)))
       .limit(1);
     return (rows[0] as unknown as IGroupMember) ?? null;
+  }
+
+  async updateMemberRole(groupId: string, userId: string, role: string): Promise<IGroupMember> {
+    const [row] = await this.db.client
+      .update(GroupMemberSchema)
+      .set({ role })
+      .where(and(eq(GroupMemberSchema.groupId, groupId), eq(GroupMemberSchema.userId, userId)))
+      .returning();
+    return row as unknown as IGroupMember;
   }
 
   async getAdminCount(groupId: string): Promise<number> {

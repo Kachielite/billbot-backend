@@ -26,6 +26,12 @@ export interface IGroupService {
   ): Promise<IPagination<GroupResponseDTO>>;
   getGroupDetail(groupId: string, userId: string): Promise<GroupResponseDTO>;
   updateGroup(groupId: string, userId: string, data: UpdateGroupDTO): Promise<GroupResponseDTO>;
+  updateMemberRole(
+    groupId: string,
+    adminId: string,
+    targetUserId: string,
+    role: 'admin' | 'member',
+  ): Promise<IGeneralResponse<null>>;
   deleteGroup(groupId: string, userId: string): Promise<IGeneralResponse<null>>;
   removeMember(
     groupId: string,
@@ -202,6 +208,53 @@ class GroupService implements IGroupService {
         throw error;
       logger.error(`Error updating group ${groupId}: ${error}`);
       throw new InternalServerException('Failed to update group.');
+    }
+  }
+
+  async updateMemberRole(
+    groupId: string,
+    adminId: string,
+    targetUserId: string,
+    role: 'admin' | 'member',
+  ): Promise<IGeneralResponse<null>> {
+    logger.info(
+      `Update role of user ${targetUserId} to "${role}" in group ${groupId} by admin ${adminId}`,
+    );
+    try {
+      const group = await this.groupRepository.findById(groupId);
+      if (!group) {
+        logger.warn(`Group not found: ${groupId}`);
+        throw new ResourceNotFoundException('Group not found.');
+      }
+
+      const admin = await this.groupRepository.getMember(groupId, adminId);
+      if (!admin || admin.role !== 'admin') {
+        logger.warn(`User ${adminId} is not an admin of group ${groupId} — role update denied`);
+        throw new ForbiddenException('Only admins can update member roles.');
+      }
+
+      const target = await this.groupRepository.getMember(groupId, targetUserId);
+      if (!target) {
+        logger.warn(`Member ${targetUserId} not found in group ${groupId}`);
+        throw new ResourceNotFoundException('Member not found in group.');
+      }
+
+      if (target.role === 'admin' && role === 'member') {
+        const adminCount = await this.groupRepository.getAdminCount(groupId);
+        if (adminCount <= 1) {
+          logger.warn(`Cannot demote last admin ${targetUserId} in group ${groupId}`);
+          throw new ForbiddenException('Cannot demote the last admin in the group.');
+        }
+      }
+
+      await this.groupRepository.updateMemberRole(groupId, targetUserId, role);
+      logger.info(`Role of user ${targetUserId} updated to "${role}" in group ${groupId}`);
+      return { success: true, message: 'Member role updated successfully.', data: null };
+    } catch (error) {
+      if (error instanceof ResourceNotFoundException || error instanceof ForbiddenException)
+        throw error;
+      logger.error(`Error updating role for ${targetUserId} in group ${groupId}: ${error}`);
+      throw new InternalServerException('Failed to update member role.');
     }
   }
 

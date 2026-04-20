@@ -56,9 +56,9 @@ class InviteService implements IInviteService {
         logger.warn(`Group not found: ${groupId}`);
         throw new ResourceNotFoundException('Group not found.');
       }
-      if (!member) {
-        logger.warn(`User ${invitedBy} is not a member of group ${groupId} — invite denied`);
-        throw new ForbiddenException('You must be a group member to invite others.');
+      if (!member || member.role !== 'admin') {
+        logger.warn(`User ${invitedBy} is not an admin of group ${groupId} — invite denied`);
+        throw new ForbiddenException('Only admins can invite members.');
       }
 
       const expiresAt = new Date(Date.now() + INVITE_EXPIRES_DAYS * 24 * 60 * 60 * 1000);
