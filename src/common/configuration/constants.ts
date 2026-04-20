@@ -11,6 +11,7 @@ export const CONSTANTS = {
   CLOUDINARY_API_SECRET: process.env.CLOUDINARY_API_SECRET || '',
   OPENAI_API_KEY: process.env.OPENAI_API_KEY || '',
   GOOGLE_CLIENT_ID: process.env.GOOGLE_CLIENT_ID || '',
+  WEB_CLIENT_ID: process.env.WEB_CLIENT_ID || '',
   APPLE_BUNDLE_ID: process.env.APPLE_BUNDLE_ID || 'app.billbot',
   APP_BASE_URL: process.env.APP_BASE_URL || 'http://localhost:3000',
   FRONTEND_ORIGIN: process.env.FRONTEND_ORIGIN || 'http://localhost:3001',

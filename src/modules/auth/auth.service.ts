@@ -37,9 +37,10 @@ class AuthService implements IAuthService {
     logger.info('Google sign-in request received');
     try {
       // Verify with Google
+      const audience = [CONSTANTS.GOOGLE_CLIENT_ID, CONSTANTS.WEB_CLIENT_ID].filter(Boolean);
       const ticket = await googleClient.verifyIdToken({
         idToken: payload.idToken,
-        audience: CONSTANTS.GOOGLE_CLIENT_ID,
+        audience,
       });
 
       const googlePayload = ticket.getPayload();
