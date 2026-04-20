@@ -122,6 +122,13 @@ class PoolGroupController extends BaseController {
    *                       status: { type: string, enum: [active, settled, closed] }
    *                       activity_status: { type: string, enum: [empty, ongoing, settled] }
    *                       expense_count: { type: integer }
+   *                       balance:
+   *                         type: object
+   *                         properties:
+   *                           total_owed: { type: number }
+   *                           total_owed_to_me: { type: number }
+   *                           net_balance: { type: number }
+   *                           currency: { type: string }
    *                       created_by: { type: string, nullable: true }
    *                       created_at: { type: string, format: date-time }
    *       '403':

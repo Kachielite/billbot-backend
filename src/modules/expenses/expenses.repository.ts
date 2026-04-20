@@ -73,6 +73,10 @@ export interface IExpenseRepository {
     groupIds: string[],
   ): Promise<Map<string, { totalOwed: number; totalOwedToMe: number }>>;
   getExpenseCountByPools(poolIds: string[]): Promise<Map<string, number>>;
+  getPoolBalancesForUser(
+    userId: string,
+    poolIds: string[],
+  ): Promise<Map<string, { totalOwed: number; totalOwedToMe: number }>>;
 }
 
 @injectable()
@@ -430,6 +434,35 @@ class ExpenseRepositoryImpl implements IExpenseRepository {
     const map = new Map<string, number>();
     for (const row of rows) {
       if (row.poolId) map.set(row.poolId, row.count);
+    }
+    return map;
+  }
+
+  async getPoolBalancesForUser(
+    userId: string,
+    poolIds: string[],
+  ): Promise<Map<string, { totalOwed: number; totalOwedToMe: number }>> {
+    if (poolIds.length === 0) return new Map();
+
+    const rows = await this.db.client
+      .select({
+        poolId: ExpenseSchema.poolId,
+        totalOwed: sql<string>`COALESCE(SUM(CASE WHEN ${ExpenseSplitSchema.owedBy} = ${userId} AND ${ExpenseSchema.paidBy} != ${userId} AND ${ExpenseSplitSchema.settled} = false THEN ${ExpenseSplitSchema.amount}::numeric ELSE 0 END), 0)`,
+        totalOwedToMe: sql<string>`COALESCE(SUM(CASE WHEN ${ExpenseSchema.paidBy} = ${userId} AND ${ExpenseSplitSchema.owedBy} != ${userId} AND ${ExpenseSplitSchema.settled} = false THEN ${ExpenseSplitSchema.amount}::numeric ELSE 0 END), 0)`,
+      })
+      .from(ExpenseSchema)
+      .innerJoin(ExpenseSplitSchema, eq(ExpenseSplitSchema.expenseId, ExpenseSchema.id))
+      .where(inArray(ExpenseSchema.poolId, poolIds))
+      .groupBy(ExpenseSchema.poolId);
+
+    const map = new Map<string, { totalOwed: number; totalOwedToMe: number }>();
+    for (const row of rows) {
+      if (row.poolId) {
+        map.set(row.poolId, {
+          totalOwed: parseFloat(row.totalOwed),
+          totalOwedToMe: parseFloat(row.totalOwedToMe),
+        });
+      }
     }
     return map;
   }

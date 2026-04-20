@@ -14,6 +14,7 @@ import {
   ResourceNotFoundException,
 } from '@/common/exception';
 import logger from '@/common/lib/logger';
+import { getCurrencySymbol } from '@/common/utils/currency';
 
 export interface IPoolService {
   createPool(groupId: string, userId: string, data: CreatePoolDTO): Promise<IPool>;
@@ -122,9 +123,10 @@ class PoolService implements IPoolService {
       const offset = (page - 1) * limit;
       const { pools, total } = await this.poolRepository.findByGroup(groupId, limit, offset);
       const poolIds = pools.map((p) => p.id);
-      const [activityMap, expenseCountMap] = await Promise.all([
+      const [activityMap, expenseCountMap, poolBalanceMap] = await Promise.all([
         this.expenseRepository.getActivityStatusByPools(poolIds),
         this.expenseRepository.getExpenseCountByPools(poolIds),
+        this.expenseRepository.getPoolBalancesForUser(userId, poolIds),
       ]);
 
       logger.info(`Found ${total} total pool(s) for group ${groupId}, returning ${pools.length}`);
@@ -133,11 +135,20 @@ class PoolService implements IPoolService {
         limit,
         total_items: total,
         pages: Math.ceil(total / limit),
-        items: pools.map((p) => ({
-          ...p,
-          activity_status: activityMap.get(p.id) ?? 'empty',
-          expense_count: expenseCountMap.get(p.id) ?? 0,
-        })),
+        items: pools.map((p) => {
+          const bal = poolBalanceMap.get(p.id) ?? { totalOwed: 0, totalOwedToMe: 0 };
+          return {
+            ...p,
+            activity_status: activityMap.get(p.id) ?? 'empty',
+            expense_count: expenseCountMap.get(p.id) ?? 0,
+            balance: {
+              total_owed: bal.totalOwed,
+              total_owed_to_me: bal.totalOwedToMe,
+              net_balance: bal.totalOwedToMe - bal.totalOwed,
+              currency: getCurrencySymbol('NGN'),
+            },
+          };
+        }),
       };
     } catch (error) {
       if (error instanceof ForbiddenException) throw error;
