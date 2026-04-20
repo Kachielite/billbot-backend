@@ -5,7 +5,13 @@
       "Bash(npx husky:*)",
       "Bash(npm install:*)",
       "Bash(npm uninstall:*)",
-      "Bash(npx eslint:*)"
+      "Bash(npx eslint:*)",
+      "Bash(ls -la /Users/derrickmadumere/WebstormProjects/billbot/backend/src/modules/*/\\\\*.service.ts)",
+      "Bash(awk '{print $NF}')",
+      "Bash(npm run *)",
+      "Bash(node *)",
+      "Bash(git add *)",
+      "Bash(git commit -m ' *)"
     ]
   }
 }
