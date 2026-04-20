@@ -5,11 +5,12 @@ import {
   Controller,
   Delete,
   Get,
+  Patch,
   Post,
 } from '@/common/decorators/controller.decorator';
 import { ROUTER_TOKENS } from '@/common/constants/router.tokens';
 import GroupService, { IGroupService } from './groups.service';
-import { CreateGroupSchema, CreateGroupDTO } from './groups.dto';
+import { CreateGroupSchema, CreateGroupDTO, UpdateGroupSchema, UpdateGroupDTO } from './groups.dto';
 import { IAuthenticatedRequest } from '@/common/types/interface';
 
 /**
@@ -200,6 +201,53 @@ class GroupController extends BaseController {
   async getGroup(req: Request) {
     const userId = (req as unknown as IAuthenticatedRequest).user?.id as string;
     return this.groupService.getGroupDetail(req.params['groupId'] as string, userId);
+  }
+
+  /**
+   * @swagger
+   * /groups/{groupId}:
+   *   patch:
+   *     tags: [Groups]
+   *     summary: Update group details
+   *     description: Admin only. All fields are optional — only provided fields are updated.
+   *     security:
+   *       - bearerAuth: []
+   *     parameters:
+   *       - in: path
+   *         name: groupId
+   *         required: true
+   *         schema: { type: string }
+   *     requestBody:
+   *       required: true
+   *       content:
+   *         application/json:
+   *           schema:
+   *             type: object
+   *             properties:
+   *               name: { type: string, maxLength: 100 }
+   *               description: { type: string, nullable: true, maxLength: 500 }
+   *               emoji: { type: string, nullable: true, maxLength: 10 }
+   *               color: { type: string, nullable: true, example: '#FF5733' }
+   *     responses:
+   *       '200':
+   *         description: Updated group
+   *       '400':
+   *         $ref: '#/components/responses/BadRequest'
+   *       '403':
+   *         $ref: '#/components/responses/Forbidden'
+   *       '404':
+   *         $ref: '#/components/responses/NotFound'
+   *       '401':
+   *         $ref: '#/components/responses/Unauthorized'
+   */
+  @Patch('/:groupId', { validate: UpdateGroupSchema })
+  async updateGroup(req: Request) {
+    const userId = (req as unknown as IAuthenticatedRequest).user?.id as string;
+    return this.groupService.updateGroup(
+      req.params['groupId'] as string,
+      userId,
+      req.body as UpdateGroupDTO,
+    );
   }
 
   /**

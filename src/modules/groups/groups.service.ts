@@ -1,7 +1,7 @@
 import { inject, injectable } from 'tsyringe';
 import { v4 as uuidv4 } from 'uuid';
 import { IGroupRepository } from './groups.repository';
-import { CreateGroupDTO, GroupResponseDTO } from './groups.dto';
+import { CreateGroupDTO, UpdateGroupDTO, GroupResponseDTO } from './groups.dto';
 import { IGroupDetail } from './groups.interface';
 import { IGeneralResponse, IPagination } from '@/common/types/interface';
 import { IExpenseRepository } from '@/modules/expenses/expenses.repository';
@@ -25,6 +25,7 @@ export interface IGroupService {
     includeMembers: boolean,
   ): Promise<IPagination<GroupResponseDTO>>;
   getGroupDetail(groupId: string, userId: string): Promise<GroupResponseDTO>;
+  updateGroup(groupId: string, userId: string, data: UpdateGroupDTO): Promise<GroupResponseDTO>;
   deleteGroup(groupId: string, userId: string): Promise<IGeneralResponse<null>>;
   removeMember(
     groupId: string,
@@ -165,6 +166,42 @@ class GroupService implements IGroupService {
         throw error;
       logger.error(`Error fetching group detail ${groupId}: ${error}`);
       throw new InternalServerException('Failed to fetch group details.');
+    }
+  }
+
+  async updateGroup(
+    groupId: string,
+    userId: string,
+    data: UpdateGroupDTO,
+  ): Promise<GroupResponseDTO> {
+    logger.info(`Update group ${groupId} requested by user ${userId}`);
+    try {
+      const group = await this.groupRepository.findById(groupId);
+      if (!group) {
+        logger.warn(`Group not found: ${groupId}`);
+        throw new ResourceNotFoundException('Group not found.');
+      }
+
+      const member = await this.groupRepository.getMember(groupId, userId);
+      if (!member || member.role !== 'admin') {
+        logger.warn(`User ${userId} is not an admin of group ${groupId} — update denied`);
+        throw new ForbiddenException('Only admins can edit group details.');
+      }
+
+      const updated = await this.groupRepository.update(groupId, {
+        ...(data.name !== undefined && { name: data.name }),
+        ...(data.description !== undefined && { description: data.description }),
+        ...(data.emoji !== undefined && { emoji: data.emoji }),
+        ...(data.color !== undefined && { color: data.color }),
+      });
+
+      logger.info(`Group ${groupId} updated successfully by user ${userId}`);
+      return this.mapToDTO(updated);
+    } catch (error) {
+      if (error instanceof ResourceNotFoundException || error instanceof ForbiddenException)
+        throw error;
+      logger.error(`Error updating group ${groupId}: ${error}`);
+      throw new InternalServerException('Failed to update group.');
     }
   }
 

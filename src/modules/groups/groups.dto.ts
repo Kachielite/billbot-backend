@@ -1,5 +1,17 @@
 import { z } from 'zod';
 
+export const UpdateGroupSchema = z.object({
+  name: z.string().min(1).max(100).optional(),
+  description: z.string().max(500).nullable().optional(),
+  emoji: z.string().max(10).nullable().optional(),
+  color: z
+    .string()
+    .regex(/^#[0-9A-Fa-f]{6}$/, 'color must be a valid hex color (e.g. #FF5733)')
+    .nullable()
+    .optional(),
+});
+export type UpdateGroupDTO = z.infer<typeof UpdateGroupSchema>;
+
 export const CreateGroupSchema = z.object({
   name: z.string().min(1, 'Name is required').max(100),
   description: z.string().max(500).optional(),

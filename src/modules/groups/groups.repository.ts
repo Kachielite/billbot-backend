@@ -13,6 +13,15 @@ import {
 
 export interface IGroupRepository {
   create(data: ICreateGroup): Promise<IGroup>;
+  update(
+    id: string,
+    data: Partial<{
+      name: string;
+      description: string | null;
+      emoji: string | null;
+      color: string | null;
+    }>,
+  ): Promise<IGroup>;
   findById(id: string): Promise<IGroup | null>;
   findByIdWithDetail(id: string): Promise<IGroupDetail | null>;
   findByInviteCode(code: string): Promise<IGroup | null>;
@@ -35,6 +44,23 @@ class GroupRepositoryImpl implements IGroupRepository {
 
   async create(data: ICreateGroup): Promise<IGroup> {
     const [row] = await this.db.client.insert(GroupSchema).values(data).returning();
+    return row as unknown as IGroup;
+  }
+
+  async update(
+    id: string,
+    data: Partial<{
+      name: string;
+      description: string | null;
+      emoji: string | null;
+      color: string | null;
+    }>,
+  ): Promise<IGroup> {
+    const [row] = await this.db.client
+      .update(GroupSchema)
+      .set(data)
+      .where(eq(GroupSchema.id, id))
+      .returning();
     return row as unknown as IGroup;
   }
 
