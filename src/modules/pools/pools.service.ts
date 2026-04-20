@@ -16,16 +16,41 @@ import {
 import logger from '@/common/lib/logger';
 import { getCurrencySymbol } from '@/common/utils/currency';
 
+export interface IPoolResponse {
+  id: string;
+  group_id: string;
+  name: string;
+  description: string | null;
+  status: string;
+  split_type: string;
+  is_default: boolean;
+  created_by: string | null;
+  created_at: Date;
+}
+
 export interface IPoolService {
-  createPool(groupId: string, userId: string, data: CreatePoolDTO): Promise<IPool>;
+  createPool(groupId: string, userId: string, data: CreatePoolDTO): Promise<IPoolResponse>;
   listPools(
     groupId: string,
     userId: string,
     page: number,
     limit: number,
-  ): Promise<IPagination<IPool & { activity_status: 'empty' | 'ongoing' | 'settled' }>>;
-  getPoolDetail(poolId: string, userId: string): Promise<IPool & { members: unknown[] }>;
-  updatePool(poolId: string, userId: string, data: UpdatePoolDTO): Promise<IPool>;
+  ): Promise<
+    IPagination<
+      IPoolResponse & {
+        activity_status: 'empty' | 'ongoing' | 'settled';
+        expense_count: number;
+        balance: {
+          total_owed: number;
+          total_owed_to_me: number;
+          net_balance: number;
+          currency: string;
+        };
+      }
+    >
+  >;
+  getPoolDetail(poolId: string, userId: string): Promise<IPoolResponse & { members: unknown[] }>;
+  updatePool(poolId: string, userId: string, data: UpdatePoolDTO): Promise<IPoolResponse>;
   addMember(
     poolId: string,
     userId: string,
@@ -47,7 +72,7 @@ class PoolService implements IPoolService {
     @inject(WebhookDispatcher) private webhookDispatcher: WebhookDispatcher,
   ) {}
 
-  async createPool(groupId: string, userId: string, data: CreatePoolDTO): Promise<IPool> {
+  async createPool(groupId: string, userId: string, data: CreatePoolDTO): Promise<IPoolResponse> {
     logger.info(`Creating pool "${data.name}" in group ${groupId} by user ${userId}`);
     try {
       const group = await this.groupRepository.findById(groupId);
@@ -91,7 +116,7 @@ class PoolService implements IPoolService {
       });
 
       logger.info(`Pool "${pool.name}" (${pool.id}) created in group ${groupId} by user ${userId}`);
-      return pool;
+      return this.mapPool(pool);
     } catch (error) {
       if (
         error instanceof ResourceNotFoundException ||
@@ -109,7 +134,20 @@ class PoolService implements IPoolService {
     userId: string,
     page: number,
     limit: number,
-  ): Promise<IPagination<IPool & { activity_status: 'empty' | 'ongoing' | 'settled' }>> {
+  ): Promise<
+    IPagination<
+      IPoolResponse & {
+        activity_status: 'empty' | 'ongoing' | 'settled';
+        expense_count: number;
+        balance: {
+          total_owed: number;
+          total_owed_to_me: number;
+          net_balance: number;
+          currency: string;
+        };
+      }
+    >
+  > {
     logger.info(
       `Listing pools for group ${groupId}, page ${page}, limit ${limit}, requested by user ${userId}`,
     );
@@ -138,7 +176,7 @@ class PoolService implements IPoolService {
         items: pools.map((p) => {
           const bal = poolBalanceMap.get(p.id) ?? { totalOwed: 0, totalOwedToMe: 0 };
           return {
-            ...p,
+            ...this.mapPool(p),
             activity_status: activityMap.get(p.id) ?? 'empty',
             expense_count: expenseCountMap.get(p.id) ?? 0,
             balance: {
@@ -157,7 +195,10 @@ class PoolService implements IPoolService {
     }
   }
 
-  async getPoolDetail(poolId: string, userId: string): Promise<IPool & { members: unknown[] }> {
+  async getPoolDetail(
+    poolId: string,
+    userId: string,
+  ): Promise<IPoolResponse & { members: unknown[] }> {
     logger.info(`Fetching pool detail for pool ${poolId}, requested by user ${userId}`);
     try {
       const pool = await this.poolRepository.findById(poolId);
@@ -174,7 +215,16 @@ class PoolService implements IPoolService {
 
       const members = await this.poolRepository.getMembers(poolId);
       logger.info(`Pool detail fetched for pool ${poolId}`);
-      return { ...pool, members };
+      return {
+        ...this.mapPool(pool),
+        members: members.map((m) => ({
+          user_id: m.userId,
+          name: m.name,
+          email: m.email,
+          avatar_url: m.avatarUrl,
+          joined_at: m.joinedAt,
+        })),
+      };
     } catch (error) {
       if (error instanceof ResourceNotFoundException || error instanceof ForbiddenException)
         throw error;
@@ -183,7 +233,7 @@ class PoolService implements IPoolService {
     }
   }
 
-  async updatePool(poolId: string, userId: string, data: UpdatePoolDTO): Promise<IPool> {
+  async updatePool(poolId: string, userId: string, data: UpdatePoolDTO): Promise<IPoolResponse> {
     logger.info(`Update pool ${poolId} requested by user ${userId}`);
     try {
       const pool = await this.poolRepository.findById(poolId);
@@ -210,7 +260,7 @@ class PoolService implements IPoolService {
       }
 
       logger.info(`Pool ${poolId} updated successfully by user ${userId}`);
-      return updated;
+      return this.mapPool(updated);
     } catch (error) {
       if (error instanceof ResourceNotFoundException || error instanceof ForbiddenException)
         throw error;
@@ -309,6 +359,19 @@ class PoolService implements IPoolService {
       logger.error(`Error removing pool member: ${error}`);
       throw new InternalServerException('Failed to remove pool member.');
     }
+  }
+  private mapPool(p: IPool) {
+    return {
+      id: p.id,
+      group_id: p.groupId,
+      name: p.name,
+      description: p.description,
+      status: p.status,
+      split_type: p.splitType,
+      is_default: p.isDefault,
+      created_by: p.createdBy,
+      created_at: p.createdAt,
+    };
   }
 }
 
