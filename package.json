@@ -14,6 +14,9 @@
     "db:migrate": "ts-node -r tsconfig-paths/register src/common/lib/database/migrate.ts",
     "db:push": "drizzle-kit push",
     "db:studio": "drizzle-kit studio",
+    "db:seed": "ts-node -r tsconfig-paths/register scripts/seed.ts",
+    "db:reset": "ts-node -r tsconfig-paths/register scripts/reset.ts",
+    "db:reset:full": "ts-node -r tsconfig-paths/register scripts/reset.ts --full",
     "prepare": "husky"
   },
   "dependencies": {
