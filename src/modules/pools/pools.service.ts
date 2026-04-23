@@ -61,6 +61,7 @@ export interface IPoolService {
     adminId: string,
     targetUserId: string,
   ): Promise<IGeneralResponse<null>>;
+  deletePool(poolId: string, userId: string): Promise<IGeneralResponse<null>>;
 }
 
 @injectable()
@@ -360,6 +361,51 @@ class PoolService implements IPoolService {
       throw new InternalServerException('Failed to remove pool member.');
     }
   }
+  async deletePool(poolId: string, userId: string): Promise<IGeneralResponse<null>> {
+    logger.info(`Delete pool ${poolId} requested by user ${userId}`);
+    try {
+      const pool = await this.poolRepository.findById(poolId);
+      if (!pool) {
+        logger.warn(`Pool not found: ${poolId}`);
+        throw new ResourceNotFoundException('Pool not found.');
+      }
+
+      if (pool.isDefault) {
+        throw new BadRequestException('The default pool cannot be deleted.');
+      }
+
+      const admin = await this.groupRepository.getMember(pool.groupId, userId);
+      if (!admin || admin.role !== 'admin') {
+        logger.warn(`User ${userId} is not an admin of group ${pool.groupId} — delete pool denied`);
+        throw new ForbiddenException('Only admins can delete a pool.');
+      }
+
+      const expenseCountMap = await this.expenseRepository.getExpenseCountByPools([poolId]);
+      const expenseCount = expenseCountMap.get(poolId) ?? 0;
+
+      if (expenseCount === 0) {
+        await this.poolRepository.delete(poolId);
+        this.webhookDispatcher.dispatch(pool.groupId, 'pool.deleted', { pool_id: poolId });
+        logger.info(`Pool ${poolId} hard-deleted by user ${userId}`);
+        return { success: true, message: 'Pool deleted.', data: null };
+      }
+
+      await this.poolRepository.update(poolId, { status: 'archived' });
+      this.webhookDispatcher.dispatch(pool.groupId, 'pool.archived', { pool_id: poolId });
+      logger.info(`Pool ${poolId} archived by user ${userId} (has ${expenseCount} expense(s))`);
+      return { success: true, message: 'Pool archived.', data: null };
+    } catch (error) {
+      if (
+        error instanceof ResourceNotFoundException ||
+        error instanceof ForbiddenException ||
+        error instanceof BadRequestException
+      )
+        throw error;
+      logger.error(`Error deleting pool: ${error}`);
+      throw new InternalServerException('Failed to delete pool.');
+    }
+  }
+
   private mapPool(p: IPool) {
     return {
       id: p.id,

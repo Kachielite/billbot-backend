@@ -202,6 +202,48 @@ class PoolController extends BaseController {
       req.params['userId'] as string,
     );
   }
+
+  /**
+   * @swagger
+   * /pools/{poolId}:
+   *   delete:
+   *     tags: [Pools]
+   *     summary: Delete a pool
+   *     description: >
+   *       Admin only. Default pools cannot be deleted.
+   *       Pools with no expenses are hard-deleted; pools with expenses are archived (status = archived).
+   *     security:
+   *       - bearerAuth: []
+   *     parameters:
+   *       - in: path
+   *         name: poolId
+   *         required: true
+   *         schema: { type: string }
+   *     responses:
+   *       '200':
+   *         description: Pool deleted or archived
+   *         content:
+   *           application/json:
+   *             schema:
+   *               type: object
+   *               properties:
+   *                 success: { type: boolean }
+   *                 message: { type: string, example: Pool deleted. }
+   *                 data: { type: 'null', nullable: true }
+   *       '400':
+   *         $ref: '#/components/responses/BadRequest'
+   *       '403':
+   *         $ref: '#/components/responses/Forbidden'
+   *       '404':
+   *         $ref: '#/components/responses/NotFound'
+   *       '401':
+   *         $ref: '#/components/responses/Unauthorized'
+   */
+  @Delete('/:poolId')
+  async deletePool(req: Request) {
+    const userId = (req as unknown as IAuthenticatedRequest).user?.id as string;
+    return this.poolService.deletePool(req.params['poolId'] as string, userId);
+  }
 }
 
 export default PoolController;

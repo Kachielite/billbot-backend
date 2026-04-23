@@ -76,6 +76,9 @@ class BalanceController extends BaseController {
    *                       total_paid: { type: number }
    *                       total_owed: { type: number }
    *                       net_balance: { type: number }
+   *                 total_amount: { type: number, description: Total spend across all expenses in the pool }
+   *                 amount_collected: { type: number, description: Sum of settled splits — money already paid back }
+   *                 outstanding: { type: number, description: Remaining unsettled amount (total_amount - amount_collected) }
    *       '403':
    *         $ref: '#/components/responses/Forbidden'
    *       '404':
@@ -146,6 +149,9 @@ export default BalanceController;
  *                       total_paid: { type: number }
  *                       total_owed: { type: number }
  *                       net_balance: { type: number }
+ *                 total_amount: { type: number, description: Total spend across all expenses in the group }
+ *                 amount_collected: { type: number, description: Sum of settled splits — money already paid back }
+ *                 outstanding: { type: number, description: Remaining unsettled amount (total_amount - amount_collected) }
  *       '403':
  *         $ref: '#/components/responses/Forbidden'
  *       '404':

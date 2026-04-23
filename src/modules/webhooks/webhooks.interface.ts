@@ -28,6 +28,8 @@ export type WebhookEventType =
   | 'pool.created'
   | 'pool.settled'
   | 'pool.member_added'
+  | 'pool.deleted'
+  | 'pool.archived'
   | 'expense.created'
   | 'expense.deleted'
   | 'settlement.submitted'

@@ -14,6 +14,7 @@ export const UserResponseSchema = z.object({
   phone: z.string().nullable(),
   email: z.string().nullable(),
   avatar_url: z.string().nullable(),
+  currency: z.string(),
   created_at: z.date(),
 });
 export type UserResponseDTO = z.infer<typeof UserResponseSchema>;

@@ -48,6 +48,7 @@ class UserController extends BaseController {
    *                 phone: { type: string, nullable: true }
    *                 email: { type: string, nullable: true }
    *                 avatar_url: { type: string, nullable: true }
+   *                 currency: { type: string, example: '₦' }
    *                 created_at: { type: string, format: date-time }
    *       '401':
    *         $ref: '#/components/responses/Unauthorized'

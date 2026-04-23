@@ -2,6 +2,7 @@ import { inject, injectable } from 'tsyringe';
 import { IUserRepository } from './users.repository';
 import { UpdateUserDTO, UserResponseDTO } from './users.dto';
 import { InternalServerException, ResourceNotFoundException } from '@/common/exception';
+import { getCurrencySymbol } from '@/common/utils/currency';
 import logger from '@/common/lib/logger';
 
 export interface IUserService {
@@ -79,6 +80,7 @@ class UserService implements IUserService {
       phone: user.phone,
       email: user.email,
       avatar_url: user.avatarUrl,
+      currency: getCurrencySymbol('NGN'),
       created_at: user.createdAt,
     };
   }

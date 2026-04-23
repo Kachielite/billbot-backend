@@ -38,6 +38,7 @@ export interface IPoolRepository {
     }>
   >;
   getMember(poolId: string, userId: string): Promise<IPoolMember | null>;
+  delete(id: string): Promise<void>;
 }
 
 @injectable()
@@ -161,6 +162,10 @@ class PoolRepositoryImpl implements IPoolRepository {
       .where(and(eq(PoolMemberSchema.poolId, poolId), eq(PoolMemberSchema.userId, userId)))
       .limit(1);
     return (rows[0] as unknown as IPoolMember) ?? null;
+  }
+
+  async delete(id: string): Promise<void> {
+    await this.db.client.delete(ExpensePoolSchema).where(eq(ExpensePoolSchema.id, id));
   }
 
   async getActivePoolCountByGroups(groupIds: string[]): Promise<Map<string, number>> {

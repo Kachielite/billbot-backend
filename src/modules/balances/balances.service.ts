@@ -27,6 +27,9 @@ export interface IMemberSummary {
 export interface IBalanceResult {
   balances: IBalanceEntry[];
   member_summary: IMemberSummary[];
+  total_amount: number;
+  amount_collected: number;
+  outstanding: number;
 }
 
 export interface IUserBalanceSummary {
@@ -111,11 +114,17 @@ class BalanceService implements IBalanceService {
 
       // Simplify debts using greedy algorithm
       const balances = this.simplifyDebts(nets, memberMap);
+      const total_amount = member_summary.reduce((sum, m) => sum + m.total_paid, 0);
+      const amount_collected = splits.reduce(
+        (sum, s) => (s.settled ? sum + parseFloat(s.amount) : sum),
+        0,
+      );
+      const outstanding = total_amount - amount_collected;
 
       logger.info(
         `Balance calculation complete for pool ${poolId}: ${balances.length} balance entry/entries`,
       );
-      return { balances, member_summary };
+      return { balances, member_summary, total_amount, amount_collected, outstanding };
     } catch (error) {
       if (error instanceof ResourceNotFoundException || error instanceof ForbiddenException)
         throw error;
@@ -189,11 +198,14 @@ class BalanceService implements IBalanceService {
         members.map((m) => [m.user_id, { userId: m.user_id, name: m.name }]),
       );
       const balances = this.simplifyDebts(nets, poolMemberMap);
+      const total_amount = member_summary.reduce((sum, m) => sum + m.total_paid, 0);
+      const outstanding = splits.reduce((sum, s) => sum + parseFloat(s.amount), 0);
+      const amount_collected = total_amount - outstanding;
 
       logger.info(
         `Group balance calculation complete for group ${groupId}: ${balances.length} balance entry/entries`,
       );
-      return { balances, member_summary };
+      return { balances, member_summary, total_amount, amount_collected, outstanding };
     } catch (error) {
       if (error instanceof ResourceNotFoundException || error instanceof ForbiddenException)
         throw error;
