@@ -41,6 +41,7 @@ export const ExpenseResponseSchema = z.object({
   currency: z.string(),
   description: z.string().nullable(),
   category_id: z.string().nullable(),
+  category_emoji: z.string().nullable(),
   receipt_url: z.string().nullable(),
   created_at: z.date(),
   is_recurring: z.boolean(),
@@ -48,5 +49,6 @@ export const ExpenseResponseSchema = z.object({
   recurrence_end_date: z.date().nullable(),
   recurrence_parent_id: z.string().nullable(),
   next_occurrence_at: z.date().nullable(),
+  splits: z.array(z.any()).optional(),
 });
 export type ExpenseResponseDTO = z.infer<typeof ExpenseResponseSchema>;

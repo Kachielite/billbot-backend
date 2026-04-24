@@ -77,22 +77,21 @@ class BalanceService implements IBalanceService {
         `Computing balances from ${expenses.length} expense(s) and ${splits.length} split(s) for pool ${poolId}`,
       );
 
-      // Calculate totals per user
+      // For each unsettled split (excluding payer's own): credit payer, debit debtor.
+      // This produces nets that sum to zero so simplifyDebts works correctly.
+      const expensePaidByMap = new Map(expenses.map((e) => [e.id, e.paidBy]));
       const totals = new Map<string, { paid: number; owed: number }>();
       for (const m of members) {
         totals.set(m.userId, { paid: 0, owed: 0 });
       }
 
-      for (const expense of expenses) {
-        if (expense.paidBy && totals.has(expense.paidBy)) {
-          totals.get(expense.paidBy)!.paid += parseFloat(expense.amount);
-        }
-      }
-
       for (const split of splits) {
-        if (split.owedBy && totals.has(split.owedBy) && !split.settled) {
-          totals.get(split.owedBy)!.owed += parseFloat(split.amount);
-        }
+        if (split.settled || !split.owedBy) continue;
+        const paidBy = expensePaidByMap.get(split.expenseId);
+        if (!paidBy || split.owedBy === paidBy) continue;
+
+        if (totals.has(paidBy)) totals.get(paidBy)!.paid += parseFloat(split.amount);
+        if (totals.has(split.owedBy)) totals.get(split.owedBy)!.owed += parseFloat(split.amount);
       }
 
       // Member summaries
@@ -114,7 +113,7 @@ class BalanceService implements IBalanceService {
 
       // Simplify debts using greedy algorithm
       const balances = this.simplifyDebts(nets, memberMap);
-      const total_amount = member_summary.reduce((sum, m) => sum + m.total_paid, 0);
+      const total_amount = expenses.reduce((sum, e) => sum + parseFloat(e.amount), 0);
       const amount_collected = splits.reduce(
         (sum, s) => (s.settled ? sum + parseFloat(s.amount) : sum),
         0,
@@ -161,21 +160,20 @@ class BalanceService implements IBalanceService {
         `Computing group balances from ${expenses.length} expense(s) and ${splits.length} split(s) for group ${groupId}`,
       );
 
+      // For each unsettled split (excluding payer's own): credit payer, debit debtor.
+      const expensePaidByMap = new Map(expenses.map((e) => [e.id, e.paidBy]));
       const totals = new Map<string, { paid: number; owed: number }>();
       for (const m of members) {
         totals.set(m.user_id, { paid: 0, owed: 0 });
       }
 
-      for (const expense of expenses) {
-        if (expense.paidBy && totals.has(expense.paidBy)) {
-          totals.get(expense.paidBy)!.paid += parseFloat(expense.amount);
-        }
-      }
-
       for (const split of splits) {
-        if (split.owedBy && totals.has(split.owedBy)) {
-          totals.get(split.owedBy)!.owed += parseFloat(split.amount);
-        }
+        if (split.settled || !split.owedBy) continue;
+        const paidBy = expensePaidByMap.get(split.expenseId);
+        if (!paidBy || split.owedBy === paidBy) continue;
+
+        if (totals.has(paidBy)) totals.get(paidBy)!.paid += parseFloat(split.amount);
+        if (totals.has(split.owedBy)) totals.get(split.owedBy)!.owed += parseFloat(split.amount);
       }
 
       const member_summary: IMemberSummary[] = [];
@@ -198,9 +196,12 @@ class BalanceService implements IBalanceService {
         members.map((m) => [m.user_id, { userId: m.user_id, name: m.name }]),
       );
       const balances = this.simplifyDebts(nets, poolMemberMap);
-      const total_amount = member_summary.reduce((sum, m) => sum + m.total_paid, 0);
-      const outstanding = splits.reduce((sum, s) => sum + parseFloat(s.amount), 0);
-      const amount_collected = total_amount - outstanding;
+      const total_amount = expenses.reduce((sum, e) => sum + parseFloat(e.amount), 0);
+      const amount_collected = splits.reduce(
+        (sum, s) => (s.settled ? sum + parseFloat(s.amount) : sum),
+        0,
+      );
+      const outstanding = total_amount - amount_collected;
 
       logger.info(
         `Group balance calculation complete for group ${groupId}: ${balances.length} balance entry/entries`,

@@ -1,5 +1,46 @@
-import { v4 as uuidv4 } from 'uuid';
 import { ICategory } from './categories.interface';
+
+const CATEGORY_IDS: Record<string, string> = {
+  rent: '4f0be298-11b6-4383-9d0e-7b94a04d4d0c',
+  home_improvement: '2e85bfed-3e12-4054-a349-0427cec1d887',
+  electricity: '1c562531-0dc1-48b0-b7aa-739a2c598f94',
+  water: '0b8cdbb6-45e4-448e-866c-e351161c8904',
+  gas: 'fecd2617-b902-4686-b0b9-df4ecb44fbd1',
+  internet: '3491f942-c84e-45e9-940f-d6fdcd992ade',
+  generator: 'cb877430-dd04-4e95-9b76-f242088685a9',
+  groceries: '766fe975-2529-46e6-9433-3e9cfae9bb30',
+  eating_out: '33573929-6ede-4dee-8062-03656f376042',
+  transport: '590592a3-2335-4066-b17d-7fce8d4a00db',
+  fuel: '71e41b99-5916-4d1f-b814-aadab72ef5e8',
+  vehicle_maintenance: '3c743c97-e932-4b92-9f41-8f60bca981e6',
+  hospital: '566b86e3-ea7e-4be7-a5d2-958a0ba09fe2',
+  pharmacy: '8204f239-2b31-4231-a219-706e65af3bd7',
+  health_insurance: '2cced79d-0dd3-40b8-b568-545c3b6f5673',
+  school_fees: '2a9a27a4-f22f-4b99-9df5-17ff3e2d5c74',
+  school_supplies: 'a7c36bb1-d3cf-411c-8539-022d860c66f9',
+  training: 'ee3570d2-84e6-4156-980a-f4dbc8faaafe',
+  family_support: '6a6c71d1-176c-4a76-b54d-7c07ffada998',
+  childcare: '65a566dd-ae00-43d0-ab5e-6a17371c45bc',
+  events: 'dbfe01f9-c3bd-4dc8-b755-c17f60733c8b',
+  gifts: '4147870b-fbec-4f2c-9b44-3a8d9c6ec7cb',
+  traditional: '026f7e68-b1ef-44df-8753-454e3688189c',
+  airtime_data: '7e010a39-b056-4f0b-87dc-8dc6447bf579',
+  subscriptions: 'c90230c5-c09b-430e-9e42-44297418b169',
+  personal_care: '51f36d0f-9f99-4731-b17a-783f17d315c5',
+  clothing: '2211c61e-a89e-4c0a-9ab1-19c506bcf2cf',
+  fitness: '6a1d010f-8996-4299-ad96-89c58f8dd86b',
+  entertainment: '71bf8dca-13c5-4462-8305-bcb9348b9f41',
+  travel: '275d1ae0-8cdb-47ff-b83d-eabdb31e3364',
+  religious: '8a001160-0d47-40a4-ac8a-824f94c278a2',
+  savings: '3ed9dc20-380a-4703-9a10-10e34771639a',
+  cooperative: '8a740ffc-7850-4d50-8212-056558e5721d',
+  loan_repayment: 'b7ddefb5-507e-4d99-b840-8f664744090e',
+  insurance: '8cdbe6d2-c992-412d-b9a3-19fcc05812e2',
+  taxes: 'cc552763-c3a4-4de1-a9b6-a1606349888d',
+  business: 'aebda7d8-83db-4e34-b4e2-e0e6dbb3ac54',
+  agriculture: 'ab5bf400-b861-42b2-bb60-11b5e5c840e7',
+  other: '2e1d777d-b9e6-42d1-9dee-e71dfd53d90e',
+};
 
 /**
  * Canonical set of expense categories.
@@ -349,8 +390,7 @@ export const SEED_CATEGORIES: Omit<ICategory, 'id'>[] = [
   },
 ];
 
-/** Attach stable UUIDs so the seeder is idempotent on re-run. */
 export const SEEDED_CATEGORIES: ICategory[] = SEED_CATEGORIES.map((c) => ({
   ...c,
-  id: uuidv4(),
+  id: CATEGORY_IDS[c.slug],
 }));

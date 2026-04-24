@@ -1,7 +1,7 @@
 import { inject, injectable } from 'tsyringe';
 import { v4 as uuidv4 } from 'uuid';
 import { IExpenseRepository } from './expenses.repository';
-import { IExpense, IExpenseFilter, IParsedReceipt } from './expenses.interface';
+import { IExpense, IExpenseFilter, IExpenseSplit, IParsedReceipt } from './expenses.interface';
 import { CreateExpenseDTO, ExpenseResponseDTO } from './expenses.dto';
 import { RecurrenceFrequency } from './expenses.enum';
 import { IPagination, IGeneralResponse } from '@/common/types/interface';
@@ -196,7 +196,7 @@ class ExpenseService implements IExpenseService {
       });
 
       logger.info(`Expense ${expense.id} created successfully in pool ${poolId}`);
-      return this.mapToDTO(expense);
+      return this.mapToDTO(expense, category?.emoji ?? null);
     } catch (error) {
       if (error instanceof ResourceNotFoundException || error instanceof ForbiddenException)
         throw error;
@@ -252,12 +252,23 @@ class ExpenseService implements IExpenseService {
       );
 
       logger.info(`Returning ${expenses.length} of ${total} expense(s) for pool ${poolId}`);
+      const expenseIds = expenses.map((e) => e.id);
+      const [emojiMap, allSplits] = await Promise.all([
+        this.buildCategoryEmojiMap(expenses),
+        this.expenseRepository.getSplitsByExpenseIds(expenseIds),
+      ]);
+      const splitsMap = new Map<string, IExpenseSplit[]>();
+      for (const s of allSplits)
+        splitsMap.set(s.expenseId, [...(splitsMap.get(s.expenseId) ?? []), s]);
       return {
         page,
         limit,
         total_items: total,
         pages: Math.ceil(total / limit),
-        items: expenses.map((e) => this.mapToDTO(e)),
+        items: expenses.map((e) => ({
+          ...this.mapToDTO(e, e.categoryId ? emojiMap.get(e.categoryId) : null),
+          splits: splitsMap.get(e.id) ?? [],
+        })),
       };
     } catch (error) {
       if (error instanceof ForbiddenException) throw error;
@@ -284,9 +295,12 @@ class ExpenseService implements IExpenseService {
         throw new ForbiddenException('You are not a member of this pool.');
       }
 
-      const splits = await this.expenseRepository.getSplitsByExpense(expenseId);
+      const [splits, category] = await Promise.all([
+        this.expenseRepository.getSplitsByExpense(expenseId),
+        expense.categoryId ? this.categoryRepository.findById(expense.categoryId) : null,
+      ]);
       logger.info(`Expense ${expenseId} fetched with ${splits.length} split(s)`);
-      return { ...this.mapToDTO(expense), splits };
+      return { ...this.mapToDTO(expense, category?.emoji ?? null), splits };
     } catch (error) {
       if (error instanceof ResourceNotFoundException || error instanceof ForbiddenException)
         throw error;
@@ -419,12 +433,23 @@ class ExpenseService implements IExpenseService {
       );
 
       logger.info(`Found ${total} upcoming recurring expense(s) for user ${userId}`);
+      const expenseIds = expenses.map((e) => e.id);
+      const [emojiMap, allSplits] = await Promise.all([
+        this.buildCategoryEmojiMap(expenses),
+        this.expenseRepository.getSplitsByExpenseIds(expenseIds),
+      ]);
+      const splitsMap = new Map<string, IExpenseSplit[]>();
+      for (const s of allSplits)
+        splitsMap.set(s.expenseId, [...(splitsMap.get(s.expenseId) ?? []), s]);
       return {
         page,
         limit,
         total_items: total,
         pages: Math.ceil(total / limit),
-        items: expenses.map((e) => this.mapToDTO(e)),
+        items: expenses.map((e) => ({
+          ...this.mapToDTO(e, e.categoryId ? emojiMap.get(e.categoryId) : null),
+          splits: splitsMap.get(e.id) ?? [],
+        })),
       };
     } catch (error) {
       logger.error(`Error listing upcoming expenses for user ${userId}: ${error}`);
@@ -483,12 +508,23 @@ class ExpenseService implements IExpenseService {
         filter,
       );
       logger.info(`Found ${total} expense(s) for group ${groupId}`);
+      const expenseIds = expenses.map((e) => e.id);
+      const [emojiMap, allSplits] = await Promise.all([
+        this.buildCategoryEmojiMap(expenses),
+        this.expenseRepository.getSplitsByExpenseIds(expenseIds),
+      ]);
+      const splitsMap = new Map<string, IExpenseSplit[]>();
+      for (const s of allSplits)
+        splitsMap.set(s.expenseId, [...(splitsMap.get(s.expenseId) ?? []), s]);
       return {
         page,
         limit,
         total_items: total,
         pages: Math.ceil(total / limit),
-        items: expenses.map((e) => this.mapToDTO(e)),
+        items: expenses.map((e) => ({
+          ...this.mapToDTO(e, e.categoryId ? emojiMap.get(e.categoryId) : null),
+          splits: splitsMap.get(e.id) ?? [],
+        })),
       };
     } catch (error) {
       logger.error(`Error listing expenses for group ${groupId}: ${error}`);
@@ -507,7 +543,14 @@ class ExpenseService implements IExpenseService {
       .catch((err: unknown) => logger.warn(`Failed to log activity (${type}): ${err}`));
   }
 
-  private mapToDTO(expense: IExpense): ExpenseResponseDTO {
+  private async buildCategoryEmojiMap(expenses: IExpense[]): Promise<Map<string, string>> {
+    const ids = [...new Set(expenses.map((e) => e.categoryId).filter(Boolean))] as string[];
+    if (ids.length === 0) return new Map();
+    const categories = await this.categoryRepository.findAll();
+    return new Map(categories.filter((c) => ids.includes(c.id)).map((c) => [c.id, c.emoji]));
+  }
+
+  private mapToDTO(expense: IExpense, categoryEmoji?: string | null): ExpenseResponseDTO {
     return {
       id: expense.id,
       pool_id: expense.poolId,
@@ -516,6 +559,7 @@ class ExpenseService implements IExpenseService {
       currency: getCurrencySymbol(expense.currency),
       description: expense.description,
       category_id: expense.categoryId,
+      category_emoji: categoryEmoji ?? null,
       receipt_url: expense.receiptUrl,
       created_at: expense.createdAt,
       is_recurring: expense.isRecurring,

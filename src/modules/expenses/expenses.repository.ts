@@ -39,6 +39,7 @@ export interface IExpenseRepository {
     amount: string;
   }): Promise<IExpenseSplit>;
   getSplitsByExpense(expenseId: string): Promise<IExpenseSplit[]>;
+  getSplitsByExpenseIds(expenseIds: string[]): Promise<IExpenseSplit[]>;
   getSplitsByPool(poolId: string): Promise<IExpenseSplit[]>;
   hasSettledSplits(expenseId: string): Promise<boolean>;
   markSplitSettled(splitId: string): Promise<void>;
@@ -184,6 +185,15 @@ class ExpenseRepositoryImpl implements IExpenseRepository {
       .select()
       .from(ExpenseSplitSchema)
       .where(eq(ExpenseSplitSchema.expenseId, expenseId));
+    return rows as unknown as IExpenseSplit[];
+  }
+
+  async getSplitsByExpenseIds(expenseIds: string[]): Promise<IExpenseSplit[]> {
+    if (expenseIds.length === 0) return [];
+    const rows = await this.db.client
+      .select()
+      .from(ExpenseSplitSchema)
+      .where(inArray(ExpenseSplitSchema.expenseId, expenseIds));
     return rows as unknown as IExpenseSplit[];
   }
 
@@ -387,7 +397,7 @@ class ExpenseRepositoryImpl implements IExpenseRepository {
       .from(ExpenseSplitSchema)
       .innerJoin(ExpenseSchema, eq(ExpenseSplitSchema.expenseId, ExpenseSchema.id))
       .innerJoin(ExpensePoolSchema, eq(ExpenseSchema.poolId, ExpensePoolSchema.id))
-      .where(and(eq(ExpensePoolSchema.groupId, groupId), eq(ExpenseSplitSchema.settled, false)));
+      .where(eq(ExpensePoolSchema.groupId, groupId));
     return rows.map((r) => r.split) as unknown as IExpenseSplit[];
   }
 

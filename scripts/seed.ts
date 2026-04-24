@@ -3,9 +3,29 @@ import { Pool } from 'pg';
 import { drizzle } from 'drizzle-orm/node-postgres';
 import { CONSTANTS } from '../src/common/configuration/constants';
 import { sql } from 'drizzle-orm';
+import { SEEDED_CATEGORIES } from '../src/modules/categories/categories.seeder';
 
 const pool = new Pool({ connectionString: CONSTANTS.DATABASE_URL });
 const db = drizzle(pool);
+
+// ─── Category IDs (must match categories.seeder.ts CATEGORY_IDS) ─────────────
+
+const CAT = {
+  rent: '4f0be298-11b6-4383-9d0e-7b94a04d4d0c',
+  electricity: '1c562531-0dc1-48b0-b7aa-739a2c598f94',
+  generator: 'cb877430-dd04-4e95-9b76-f242088685a9',
+  internet: '3491f942-c84e-45e9-940f-d6fdcd992ade',
+  gas: 'fecd2617-b902-4686-b0b9-df4ecb44fbd1',
+  groceries: '766fe975-2529-46e6-9433-3e9cfae9bb30',
+  eating_out: '33573929-6ede-4dee-8062-03656f376042',
+  fuel: '71e41b99-5916-4d1f-b814-aadab72ef5e8',
+  entertainment: '71bf8dca-13c5-4462-8305-bcb9348b9f41',
+  travel: '275d1ae0-8cdb-47ff-b83d-eabdb31e3364',
+  family_support: '6a6c71d1-176c-4a76-b54d-7c07ffada998',
+  pharmacy: '8204f239-2b31-4231-a219-706e65af3bd7',
+  events: 'dbfe01f9-c3bd-4dc8-b755-c17f60733c8b',
+  clothing: '2211c61e-a89e-4c0a-9ab1-19c506bcf2cf',
+};
 
 // ─── Fixed IDs (stable across re-runs) ───────────────────────────────────────
 
@@ -141,6 +161,17 @@ const log = (msg: string) => console.log(`[seed] ${msg}`);
 async function seed() {
   log('Starting seed...');
 
+  // ─── Categories ────────────────────────────────────────────────────────────
+  log('Inserting categories...');
+  await db.execute(sql`DELETE FROM categories`);
+  for (const c of SEEDED_CATEGORIES) {
+    await db.execute(sql`
+      INSERT INTO categories (id, slug, name, description, emoji, "group", is_active)
+      VALUES (${c.id}, ${c.slug}, ${c.name}, ${c.description}, ${c.emoji}, ${c.group}, ${c.isActive})
+      ON CONFLICT (id) DO NOTHING
+    `);
+  }
+
   // ─── Users (skip Derrick — he already exists as a real account) ───────────
   log('Inserting seed users...');
   const seedOnlyUsers = [USERS.amaka, USERS.tunde, USERS.chidi, USERS.ngozi, USERS.emeka];
@@ -269,6 +300,7 @@ async function seed() {
     paidBy: string;
     amount: number;
     description: string;
+    categoryId?: string;
     isRecurring?: boolean;
     recurrenceFrequency?: string;
     nextOccurrenceAt?: string;
@@ -284,6 +316,7 @@ async function seed() {
       paidBy: USERS.derrick.id,
       amount: 300000,
       description: 'April Rent',
+      categoryId: CAT.rent,
       createdAt: '2026-04-01',
       splits: [
         { id: 'seed-split-rent-d01', owedBy: USERS.derrick.id, amount: 100000, settled: true },
@@ -297,6 +330,7 @@ async function seed() {
       paidBy: USERS.amaka.id,
       amount: 45000,
       description: 'NEPA token — April',
+      categoryId: CAT.electricity,
       createdAt: '2026-04-03',
       splits: [
         { id: 'seed-split-elec-d01', owedBy: USERS.derrick.id, amount: 15000, settled: true },
@@ -310,6 +344,7 @@ async function seed() {
       paidBy: USERS.derrick.id,
       amount: 24000,
       description: 'Generator diesel — 2 weeks',
+      categoryId: CAT.generator,
       createdAt: '2026-04-10',
       splits: [
         { id: 'seed-split-gen-d01', owedBy: USERS.derrick.id, amount: 8000, settled: true },
@@ -324,6 +359,7 @@ async function seed() {
       paidBy: USERS.tunde.id,
       amount: 30000,
       description: 'Spectranet Wi-Fi subscription',
+      categoryId: CAT.internet,
       createdAt: '2026-04-05',
       isRecurring: true,
       recurrenceFrequency: 'monthly',
@@ -340,6 +376,7 @@ async function seed() {
       paidBy: USERS.derrick.id,
       amount: 300000,
       description: 'Monthly Rent',
+      categoryId: CAT.rent,
       createdAt: '2026-03-01',
       isRecurring: true,
       recurrenceFrequency: 'monthly',
@@ -357,6 +394,7 @@ async function seed() {
       paidBy: USERS.amaka.id,
       amount: 36000,
       description: 'Market run — Shoprite',
+      categoryId: CAT.groceries,
       createdAt: '2026-04-08',
       splits: [
         { id: 'seed-split-groc-d01', owedBy: USERS.derrick.id, amount: 12000, settled: false },
@@ -370,6 +408,7 @@ async function seed() {
       paidBy: USERS.tunde.id,
       amount: 18000,
       description: 'Cooking gas refill',
+      categoryId: CAT.gas,
       createdAt: '2026-04-15',
       splits: [
         { id: 'seed-split-groc2-d01', owedBy: USERS.derrick.id, amount: 6000, settled: false },
@@ -383,6 +422,7 @@ async function seed() {
       paidBy: USERS.derrick.id,
       amount: 12000,
       description: 'Seasoning & toiletries — Jumia',
+      categoryId: CAT.groceries,
       createdAt: '2026-04-20',
       isRecurring: true,
       recurrenceFrequency: 'weekly',
@@ -400,6 +440,7 @@ async function seed() {
       paidBy: USERS.derrick.id,
       amount: 15000,
       description: 'Buka lunch — Monday',
+      categoryId: CAT.eating_out,
       createdAt: '2026-04-07',
       splits: [
         { id: 'seed-split-lnch-d01', owedBy: USERS.derrick.id, amount: 5000, settled: true },
@@ -413,6 +454,7 @@ async function seed() {
       paidBy: USERS.chidi.id,
       amount: 21000,
       description: 'Mr. Biggs — team lunch',
+      categoryId: CAT.eating_out,
       createdAt: '2026-04-14',
       splits: [
         { id: 'seed-split-lnch2-d01', owedBy: USERS.derrick.id, amount: 7000, settled: false },
@@ -426,6 +468,7 @@ async function seed() {
       paidBy: USERS.tunde.id,
       amount: 12000,
       description: 'Shawarma run',
+      categoryId: CAT.eating_out,
       createdAt: '2026-04-21',
       splits: [
         { id: 'seed-split-lnch3-d01', owedBy: USERS.derrick.id, amount: 4000, settled: false },
@@ -440,6 +483,7 @@ async function seed() {
       paidBy: USERS.derrick.id,
       amount: 18000,
       description: 'Weekly lunch order',
+      categoryId: CAT.eating_out,
       createdAt: '2026-04-16',
       isRecurring: true,
       recurrenceFrequency: 'weekly',
@@ -457,6 +501,7 @@ async function seed() {
       paidBy: USERS.derrick.id,
       amount: 80000,
       description: "Mum's monthly upkeep — April",
+      categoryId: CAT.family_support,
       createdAt: '2026-04-01',
       isRecurring: true,
       recurrenceFrequency: 'monthly',
@@ -474,6 +519,7 @@ async function seed() {
       paidBy: USERS.ngozi.id,
       amount: 35000,
       description: "Dad's medication — April",
+      categoryId: CAT.pharmacy,
       createdAt: '2026-04-10',
       splits: [
         { id: 'seed-split-fup2-d01', owedBy: USERS.derrick.id, amount: 8750, settled: true },
@@ -488,6 +534,7 @@ async function seed() {
       paidBy: USERS.emeka.id,
       amount: 50000,
       description: 'Generator fuel & repairs — compound',
+      categoryId: CAT.generator,
       createdAt: '2026-04-17',
       splits: [
         { id: 'seed-split-fup3-d01', owedBy: USERS.derrick.id, amount: 12500, settled: false },
@@ -503,6 +550,7 @@ async function seed() {
       paidBy: USERS.derrick.id,
       amount: 150000,
       description: "Mum's 60th birthday — hall & catering deposit",
+      categoryId: CAT.events,
       createdAt: '2026-04-05',
       splits: [
         { id: 'seed-split-fev-d01', owedBy: USERS.derrick.id, amount: 37500, settled: true },
@@ -517,6 +565,7 @@ async function seed() {
       paidBy: USERS.amaka.id,
       amount: 45000,
       description: 'Aso-ebi fabric — 3 pieces',
+      categoryId: CAT.clothing,
       createdAt: '2026-04-14',
       splits: [
         { id: 'seed-split-fev2-d01', owedBy: USERS.derrick.id, amount: 15000, settled: false },
@@ -531,6 +580,7 @@ async function seed() {
       paidBy: USERS.derrick.id,
       amount: 60000,
       description: 'Cubana nightout — bottles & entry',
+      categoryId: CAT.entertainment,
       createdAt: '2026-04-06',
       splits: [
         { id: 'seed-split-fhg-d01', owedBy: USERS.derrick.id, amount: 15000, settled: true },
@@ -545,6 +595,7 @@ async function seed() {
       paidBy: USERS.tunde.id,
       amount: 28000,
       description: 'Cinema + popcorn — Imax Lagos',
+      categoryId: CAT.entertainment,
       createdAt: '2026-04-13',
       splits: [
         { id: 'seed-split-fhg2-d01', owedBy: USERS.derrick.id, amount: 7000, settled: false },
@@ -559,6 +610,7 @@ async function seed() {
       paidBy: USERS.chidi.id,
       amount: 20000,
       description: "Sunday jollof + drinks — Emeka's place",
+      categoryId: CAT.eating_out,
       createdAt: '2026-04-20',
       splits: [
         { id: 'seed-split-fhg3-d01', owedBy: USERS.derrick.id, amount: 5000, settled: false },
@@ -574,6 +626,7 @@ async function seed() {
       paidBy: USERS.derrick.id,
       amount: 120000,
       description: 'Airbnb — Ibadan 3 nights',
+      categoryId: CAT.travel,
       createdAt: '2026-04-08',
       splits: [
         { id: 'seed-split-ftr-d01', owedBy: USERS.derrick.id, amount: 30000, settled: true },
@@ -588,6 +641,7 @@ async function seed() {
       paidBy: USERS.emeka.id,
       amount: 56000,
       description: 'Fuel & tolls — Lagos–Ibadan highway',
+      categoryId: CAT.fuel,
       createdAt: '2026-04-09',
       splits: [
         { id: 'seed-split-ftr2-d01', owedBy: USERS.derrick.id, amount: 14000, settled: false },
@@ -602,6 +656,7 @@ async function seed() {
       paidBy: USERS.tunde.id,
       amount: 44000,
       description: 'Groceries & drinks for the trip',
+      categoryId: CAT.groceries,
       createdAt: '2026-04-09',
       isRecurring: false,
       splits: [
@@ -618,6 +673,7 @@ async function seed() {
       paidBy: USERS.derrick.id,
       amount: 90000,
       description: 'Escape room + dinner — team outing',
+      categoryId: CAT.entertainment,
       createdAt: '2026-04-12',
       splits: [
         { id: 'seed-split-out-d01', owedBy: USERS.derrick.id, amount: 30000, settled: true },
@@ -631,6 +687,7 @@ async function seed() {
       paidBy: USERS.chidi.id,
       amount: 45000,
       description: 'Go-karting — Friday fun',
+      categoryId: CAT.entertainment,
       createdAt: '2026-04-18',
       splits: [
         { id: 'seed-split-out2-d01', owedBy: USERS.derrick.id, amount: 15000, settled: false },
@@ -646,11 +703,12 @@ async function seed() {
 
     await db.execute(sql`
       INSERT INTO expenses (
-        id, pool_id, paid_by, amount, currency, description,
+        id, pool_id, paid_by, amount, currency, description, category_id,
         is_recurring, recurrence_frequency, next_occurrence_at, created_at
       )
       VALUES (
         ${exp.id}, ${exp.poolId}, ${exp.paidBy}, ${exp.amount}, 'NGN', ${exp.description},
+        ${exp.categoryId ?? null},
         ${exp.isRecurring ?? false}, ${exp.recurrenceFrequency ?? null}, ${nextOcc}, ${createdAt}
       )
       ON CONFLICT (id) DO NOTHING
