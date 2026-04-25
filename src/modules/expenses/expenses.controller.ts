@@ -310,13 +310,17 @@ class ExpenseController extends BaseController {
 
   /**
    * @swagger
-   * /expenses/{expenseId}:
+   * /pools/{poolId}/expenses/{expenseId}:
    *   get:
    *     tags: [Expenses]
    *     summary: Get expense detail with splits
    *     security:
    *       - bearerAuth: []
    *     parameters:
+   *       - in: path
+   *         name: poolId
+   *         required: true
+   *         schema: { type: string }
    *       - in: path
    *         name: expenseId
    *         required: true

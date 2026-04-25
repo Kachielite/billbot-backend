@@ -1,5 +1,5 @@
 import { inject, injectable } from 'tsyringe';
-import { eq } from 'drizzle-orm';
+import { eq, inArray } from 'drizzle-orm';
 import Database from '@/common/lib/database';
 import { UserSchema } from './users.schema';
 import { IUser, ICreateUser, IUpdateUser } from './users.interface';
@@ -7,6 +7,7 @@ import { IUser, ICreateUser, IUpdateUser } from './users.interface';
 export interface IUserRepository {
   create(data: ICreateUser): Promise<IUser>;
   findById(id: string): Promise<IUser | null>;
+  findByIds(ids: string[]): Promise<IUser[]>;
   findByEmail(email: string): Promise<IUser | null>;
   findByPhone(phone: string): Promise<IUser | null>;
   findByGoogleId(googleId: string): Promise<IUser | null>;
@@ -41,6 +42,12 @@ class UserRepositoryImpl implements IUserRepository {
       .where(eq(UserSchema.id, id))
       .limit(1);
     return (rows[0] as unknown as IUser) ?? null;
+  }
+
+  async findByIds(ids: string[]): Promise<IUser[]> {
+    if (ids.length === 0) return [];
+    const rows = await this.db.client.select().from(UserSchema).where(inArray(UserSchema.id, ids));
+    return rows as unknown as IUser[];
   }
 
   async findByEmail(email: string): Promise<IUser | null> {

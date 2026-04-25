@@ -1,5 +1,5 @@
 import { inject, injectable } from 'tsyringe';
-import { eq, and, lte, gte, gt, or, isNull, ne, sql, inArray } from 'drizzle-orm';
+import { eq, and, lte, gte, gt, or, isNull, ne, sql, inArray, desc } from 'drizzle-orm';
 import Database from '@/common/lib/database';
 import { ExpenseSchema, ExpenseSplitSchema } from './expenses.schema';
 import { ExpensePoolSchema, PoolMemberSchema } from '@/modules/pools/pools.schema';
@@ -129,7 +129,7 @@ class ExpenseRepositoryImpl implements IExpenseRepository {
       .select()
       .from(ExpenseSchema)
       .where(conditions)
-      .orderBy(ExpenseSchema.createdAt)
+      .orderBy(desc(ExpenseSchema.createdAt))
       .limit(limit)
       .offset(offset);
 
@@ -364,7 +364,7 @@ class ExpenseRepositoryImpl implements IExpenseRepository {
       .from(ExpenseSchema)
       .innerJoin(ExpensePoolSchema, eq(ExpenseSchema.poolId, ExpensePoolSchema.id))
       .where(conditions)
-      .orderBy(ExpenseSchema.createdAt)
+      .orderBy(desc(ExpenseSchema.createdAt))
       .limit(limit)
       .offset(offset);
 

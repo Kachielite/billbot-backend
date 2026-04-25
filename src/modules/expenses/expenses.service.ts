@@ -7,6 +7,7 @@ import { RecurrenceFrequency } from './expenses.enum';
 import { IPagination, IGeneralResponse } from '@/common/types/interface';
 import { IPoolRepository } from '@/modules/pools/pools.repository';
 import { ICategoryRepository } from '@/modules/categories/categories.repository';
+import { IUserRepository } from '@/modules/users/users.repository';
 import { WebhookDispatcher } from '@/modules/webhooks/webhooks.dispatcher';
 import { IActivityRepository } from '@/modules/activities/activities.repository';
 import { uploadFile } from '@/common/lib/storage';
@@ -33,9 +34,10 @@ export interface IExpenseService {
     data: CreateExpenseDTO,
     file?: Express.Multer.File,
   ): Promise<ExpenseResponseDTO>;
-  parseReceipt(
-    file: Express.Multer.File,
-  ): Promise<{ parsed: IParsedReceipt | null; receipt_url: string }>;
+  parseReceipt(file: Express.Multer.File): Promise<{
+    parsed: (Omit<IParsedReceipt, 'category'> & { category_id: string | null }) | null;
+    receipt_url: string;
+  }>;
   listExpenses(
     poolId: string,
     userId: string,
@@ -69,6 +71,7 @@ class ExpenseService implements IExpenseService {
     @inject('IExpenseRepository') private expenseRepository: IExpenseRepository,
     @inject('IPoolRepository') private poolRepository: IPoolRepository,
     @inject('ICategoryRepository') private categoryRepository: ICategoryRepository,
+    @inject('IUserRepository') private userRepository: IUserRepository,
     @inject(WebhookDispatcher) private webhookDispatcher: WebhookDispatcher,
     @inject('IActivityRepository') private activityRepository: IActivityRepository,
   ) {}
@@ -205,9 +208,10 @@ class ExpenseService implements IExpenseService {
     }
   }
 
-  async parseReceipt(
-    file: Express.Multer.File,
-  ): Promise<{ parsed: IParsedReceipt | null; receipt_url: string }> {
+  async parseReceipt(file: Express.Multer.File): Promise<{
+    parsed: (Omit<IParsedReceipt, 'category'> & { category_id: string | null }) | null;
+    receipt_url: string;
+  }> {
     logger.info(`Receipt parse request received for file: ${file.originalname}`);
     // Always store the image first — parsing is non-blocking
     const path = `receipts/parse/${uuidv4()}-${file.originalname}`;
@@ -223,7 +227,16 @@ class ExpenseService implements IExpenseService {
     const parsed = await parseReceipt(file.buffer, file.mimetype);
     logger.info(`Receipt parse ${parsed ? 'succeeded' : 'returned no result'}`);
 
-    return { parsed, receipt_url: receiptUrl };
+    if (!parsed) return { parsed: null, receipt_url: receiptUrl };
+
+    const { category, ...rest } = parsed;
+    let categoryId: string | null = null;
+    if (category) {
+      const found = await this.categoryRepository.findBySlug(category);
+      categoryId = found?.id ?? null;
+    }
+
+    return { parsed: { ...rest, category_id: categoryId }, receipt_url: receiptUrl };
   }
 
   async listExpenses(
@@ -299,8 +312,18 @@ class ExpenseService implements IExpenseService {
         this.expenseRepository.getSplitsByExpense(expenseId),
         expense.categoryId ? this.categoryRepository.findById(expense.categoryId) : null,
       ]);
+
+      const owedByIds = [...new Set(splits.map((s) => s.owedBy).filter(Boolean))] as string[];
+      const users = await this.userRepository.findByIds(owedByIds);
+      const userMap = new Map(users.map((u) => [u.id, u]));
+
+      const enrichedSplits = splits.map((s) => {
+        const user = s.owedBy ? userMap.get(s.owedBy) : null;
+        return { ...s, name: user?.name ?? null, avatar_url: user?.avatarUrl ?? null };
+      });
+
       logger.info(`Expense ${expenseId} fetched with ${splits.length} split(s)`);
-      return { ...this.mapToDTO(expense, category?.emoji ?? null), splits };
+      return { ...this.mapToDTO(expense, category?.emoji ?? null), splits: enrichedSplits };
     } catch (error) {
       if (error instanceof ResourceNotFoundException || error instanceof ForbiddenException)
         throw error;

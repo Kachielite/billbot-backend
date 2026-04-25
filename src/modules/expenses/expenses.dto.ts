@@ -1,6 +1,13 @@
 import { z } from 'zod';
 import { Currency, RecurrenceFrequency } from './expenses.enum';
 
+const SYMBOL_TO_CURRENCY: Record<string, Currency> = {
+  '₦': Currency.NGN,
+  KSh: Currency.KES,
+  'GH₵': Currency.GHS,
+  R: Currency.ZAR,
+};
+
 export const SplitEntrySchema = z.object({
   userId: z.string().uuid('Each split userId must be a valid UUID'),
   amount: z.coerce.number().positive('Each split amount must be positive'),
@@ -12,7 +19,12 @@ export const CreateExpenseSchema = z
     description: z.string().max(255).optional(),
     /** UUID of a category from GET /v1/categories */
     categoryId: z.string().uuid('categoryId must be a valid UUID').optional(),
-    currency: z.nativeEnum(Currency).default(Currency.NGN),
+    currency: z
+      .preprocess(
+        (v) => (typeof v === 'string' && SYMBOL_TO_CURRENCY[v] ? SYMBOL_TO_CURRENCY[v] : v),
+        z.nativeEnum(Currency),
+      )
+      .default(Currency.NGN),
     isRecurring: z.coerce.boolean().optional().default(false),
     recurrenceFrequency: z.nativeEnum(RecurrenceFrequency).optional(),
     recurrenceEndDate: z
