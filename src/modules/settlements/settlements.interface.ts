@@ -12,3 +12,18 @@ export interface ISettlement {
   confirmedAt: Date | null;
   createdAt: Date;
 }
+
+export interface ISettlementDTO {
+  id: string;
+  pool_id: string | null;
+  from_user: string | null;
+  to_user: string | null;
+  amount: string;
+  currency: string;
+  proof_url: string | null;
+  note: string | null;
+  status: string;
+  disputed_reason: string | null;
+  confirmed_at: Date | null;
+  created_at: Date;
+}

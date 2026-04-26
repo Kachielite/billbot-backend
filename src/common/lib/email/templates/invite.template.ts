@@ -2,6 +2,7 @@ export interface InviteEmailData {
   inviterName: string;
   groupName: string;
   inviteLink: string;
+  inviteCode: string;
   expiresInDays: number;
 }
 
@@ -109,6 +110,19 @@ export function buildInviteEmail(data: InviteEmailData): { subject: string; html
                        style="display:inline-block;background:linear-gradient(135deg,#6c47ff 0%,#4f8ef7 100%);color:#ffffff;text-decoration:none;font-size:16px;font-weight:700;padding:16px 40px;border-radius:50px;letter-spacing:0.3px;box-shadow:0 4px 16px rgba(108,71,255,0.4);">
                       Accept Invite &amp; Join Group →
                     </a>
+                  </td>
+                </tr>
+              </table>
+
+              <p style="margin:0 0 16px;font-size:13px;color:#6b7280;text-align:center;">
+                Already have the app? Enter this code to join directly:
+              </p>
+              <table width="100%" cellpadding="0" cellspacing="0" border="0" style="margin-bottom:24px;">
+                <tr>
+                  <td align="center">
+                    <div style="display:inline-block;background:#f8f7ff;border:2px dashed #6c47ff;border-radius:12px;padding:14px 32px;">
+                      <span style="font-size:24px;font-weight:800;letter-spacing:4px;color:#6c47ff;">${data.inviteCode}</span>
+                    </div>
                   </td>
                 </tr>
               </table>

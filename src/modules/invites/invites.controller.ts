@@ -200,6 +200,46 @@ class InviteController extends BaseController {
     const userId = (req as unknown as IAuthenticatedRequest).user?.id as string;
     return this.inviteService.joinByToken(req.params['token'] as string, userId);
   }
+
+  /**
+   * @swagger
+   * /groups/join:
+   *   post:
+   *     tags: [Invites]
+   *     summary: Join a group using an invite code
+   *     description: Accepts the short invite code shown in the email (e.g. TUNDE-4821). User must be authenticated.
+   *     security:
+   *       - bearerAuth: []
+   *     requestBody:
+   *       required: true
+   *       content:
+   *         application/json:
+   *           schema:
+   *             type: object
+   *             required: [code]
+   *             properties:
+   *               code:
+   *                 type: string
+   *                 example: TUNDE-4821
+   *     responses:
+   *       '200':
+   *         description: Successfully joined the group
+   *       '400':
+   *         $ref: '#/components/responses/BadRequest'
+   *       '404':
+   *         $ref: '#/components/responses/NotFound'
+   *       '409':
+   *         $ref: '#/components/responses/Conflict'
+   *       '401':
+   *         $ref: '#/components/responses/Unauthorized'
+   */
+  @Post('/join')
+  async joinGroupByCode(req: Request) {
+    const userId = (req as unknown as IAuthenticatedRequest).user?.id as string;
+    const { code } = req.body as { code: string };
+    if (!code) throw new Error('code is required');
+    return this.inviteService.joinByCode(code, userId);
+  }
 }
 
 export default InviteController;

@@ -12,9 +12,11 @@ export interface IInviteRepository {
     phone?: string | null;
     email?: string | null;
     token: string;
+    code: string;
     expiresAt: Date;
   }): Promise<IInvite>;
   findByToken(token: string): Promise<IInvite | null>;
+  findByCode(code: string): Promise<IInvite | null>;
   findPendingByGroup(groupId: string): Promise<IInvite[]>;
   updateStatus(id: string, status: string): Promise<void>;
   delete(id: string): Promise<void>;
@@ -31,6 +33,7 @@ class InviteRepositoryImpl implements IInviteRepository {
     phone?: string | null;
     email?: string | null;
     token: string;
+    code: string;
     expiresAt: Date;
   }): Promise<IInvite> {
     const [row] = await this.db.client.insert(InviteSchema).values(data).returning();
@@ -42,6 +45,15 @@ class InviteRepositoryImpl implements IInviteRepository {
       .select()
       .from(InviteSchema)
       .where(eq(InviteSchema.token, token))
+      .limit(1);
+    return (rows[0] as unknown as IInvite) ?? null;
+  }
+
+  async findByCode(code: string): Promise<IInvite | null> {
+    const rows = await this.db.client
+      .select()
+      .from(InviteSchema)
+      .where(eq(InviteSchema.code, code.toUpperCase()))
       .limit(1);
     return (rows[0] as unknown as IInvite) ?? null;
   }

@@ -5,6 +5,7 @@ export interface IInvite {
   phone: string | null;
   email: string | null;
   token: string;
+  code: string;
   status: string;
   expiresAt: Date;
   createdAt: Date;

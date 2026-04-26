@@ -1,13 +1,16 @@
 import { inject, injectable } from 'tsyringe';
 import { v4 as uuidv4 } from 'uuid';
 import { ISettlementRepository } from './settlements.repository';
-import { ISettlement } from './settlements.interface';
+import { ISettlement, ISettlementDTO } from './settlements.interface';
 import { CreateSettlementDTO, DisputeSettlementDTO } from './settlements.dto';
 import { IGeneralResponse } from '@/common/types/interface';
 import { IPoolRepository } from '@/modules/pools/pools.repository';
 import { IExpenseRepository } from '@/modules/expenses/expenses.repository';
 import { WebhookDispatcher } from '@/modules/webhooks/webhooks.dispatcher';
 import { IActivityRepository } from '@/modules/activities/activities.repository';
+import NotificationService, {
+  INotificationService,
+} from '@/modules/notifications/notifications.service';
 import { uploadFile } from '@/common/lib/storage';
 import { parseSettlementProof } from '@/common/lib/ai-parser';
 import {
@@ -25,9 +28,9 @@ export interface ISettlementService {
     fromUserId: string,
     data: CreateSettlementDTO,
     proofFile: Express.Multer.File,
-  ): Promise<ISettlement>;
-  listSettlements(poolId: string, userId: string): Promise<ISettlement[]>;
-  getSettlement(settlementId: string, userId: string): Promise<ISettlement>;
+  ): Promise<ISettlementDTO>;
+  listSettlements(poolId: string, userId: string): Promise<ISettlementDTO[]>;
+  getSettlement(settlementId: string, userId: string): Promise<ISettlementDTO>;
   confirmSettlement(settlementId: string, userId: string): Promise<IGeneralResponse<null>>;
   disputeSettlement(
     settlementId: string,
@@ -44,6 +47,7 @@ class SettlementService implements ISettlementService {
     @inject('IExpenseRepository') private expenseRepository: IExpenseRepository,
     @inject(WebhookDispatcher) private webhookDispatcher: WebhookDispatcher,
     @inject('IActivityRepository') private activityRepository: IActivityRepository,
+    @inject(NotificationService) private notificationService: INotificationService,
   ) {}
 
   private logActivity(
@@ -62,7 +66,7 @@ class SettlementService implements ISettlementService {
     fromUserId: string,
     data: CreateSettlementDTO,
     proofFile: Express.Multer.File,
-  ): Promise<ISettlement> {
+  ): Promise<ISettlementDTO> {
     logger.info(
       `Create settlement in pool ${poolId} from user ${fromUserId} to ${data.toUserId}, amount: ${data.amount}`,
     );
@@ -130,6 +134,23 @@ class SettlementService implements ISettlementService {
         to_user_id: data.toUserId,
       });
 
+      // Notify the payee — they need to confirm or dispute
+      this.notificationService
+        .notify(
+          data.toUserId,
+          'settlement.submitted',
+          'Payment awaiting confirmation',
+          `You have a payment of ${getCurrencySymbol('NGN')}${data.amount} waiting for your confirmation.`,
+          {
+            action: 'confirm_settlement',
+            settlement_id: settlement.id,
+            pool_id: poolId,
+            from_user: fromUserId,
+            amount: data.amount.toString(),
+          },
+        )
+        .catch(() => {});
+
       logger.info(`Settlement ${settlement.id} created in pool ${poolId}`);
       return this.mapToDTO(settlement);
     } catch (error) {
@@ -144,7 +165,7 @@ class SettlementService implements ISettlementService {
     }
   }
 
-  async listSettlements(poolId: string, userId: string): Promise<ISettlement[]> {
+  async listSettlements(poolId: string, userId: string): Promise<ISettlementDTO[]> {
     logger.info(`Listing settlements for pool ${poolId}, requested by user ${userId}`);
     try {
       const member = await this.poolRepository.getMember(poolId, userId);
@@ -163,7 +184,7 @@ class SettlementService implements ISettlementService {
     }
   }
 
-  async getSettlement(settlementId: string, userId: string): Promise<ISettlement> {
+  async getSettlement(settlementId: string, userId: string): Promise<ISettlementDTO> {
     logger.info(`Fetching settlement ${settlementId}, requested by user ${userId}`);
     try {
       const settlement = await this.settlementRepository.findById(settlementId);
@@ -304,6 +325,24 @@ class SettlementService implements ISettlementService {
         });
       }
 
+      // Notify the payer — their payment was rejected
+      if (settlement.fromUser) {
+        this.notificationService
+          .notify(
+            settlement.fromUser,
+            'settlement.disputed',
+            'Your payment was disputed',
+            `Your payment has been disputed. Reason: ${data.reason}`,
+            {
+              action: 'view_dispute',
+              settlement_id: settlementId,
+              pool_id: settlement.poolId,
+              reason: data.reason,
+            },
+          )
+          .catch(() => {});
+      }
+
       logger.info(`Settlement ${settlementId} disputed by user ${userId}`);
       return { success: true, message: 'Settlement disputed.', data: null };
     } catch (error) {
@@ -318,8 +357,21 @@ class SettlementService implements ISettlementService {
     }
   }
 
-  private mapToDTO(settlement: ISettlement): ISettlement {
-    return { ...settlement, currency: getCurrencySymbol(settlement.currency) };
+  private mapToDTO(settlement: ISettlement): ISettlementDTO {
+    return {
+      id: settlement.id,
+      pool_id: settlement.poolId,
+      from_user: settlement.fromUser,
+      to_user: settlement.toUser,
+      amount: settlement.amount,
+      currency: getCurrencySymbol(settlement.currency),
+      proof_url: settlement.proofUrl,
+      note: settlement.note,
+      status: settlement.status,
+      disputed_reason: settlement.disputedReason,
+      confirmed_at: settlement.confirmedAt,
+      created_at: settlement.createdAt,
+    };
   }
 
   // Greedy split settlement: mark oldest unsettled splits first until amount is exhausted

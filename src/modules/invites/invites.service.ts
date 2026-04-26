@@ -20,7 +20,7 @@ import {
   ResourceNotFoundException,
 } from '@/common/exception';
 import logger from '@/common/lib/logger';
-import { generateToken } from '@/common/utils/otp-generator';
+import { generateToken, generateInviteCode } from '@/common/utils/otp-generator';
 
 const INVITE_EXPIRES_DAYS = 7;
 
@@ -29,6 +29,7 @@ export interface IInviteService {
   getPendingInvites(groupId: string, userId: string): Promise<IInvite[]>;
   cancelInvite(groupId: string, inviteId: string, userId: string): Promise<IGeneralResponse<null>>;
   joinByToken(token: string, userId: string): Promise<IGeneralResponse<null>>;
+  joinByCode(code: string, userId: string): Promise<IGeneralResponse<null>>;
 }
 
 @injectable()
@@ -63,6 +64,7 @@ class InviteService implements IInviteService {
 
       const expiresAt = new Date(Date.now() + INVITE_EXPIRES_DAYS * 24 * 60 * 60 * 1000);
       const token = generateToken(32);
+      const code = generateInviteCode();
 
       const invite = await this.inviteRepository.create({
         id: uuidv4(),
@@ -71,6 +73,7 @@ class InviteService implements IInviteService {
         phone: data.phone ?? null,
         email: data.email ?? null,
         token,
+        code,
         expiresAt,
       });
 
@@ -106,6 +109,7 @@ class InviteService implements IInviteService {
             inviterName,
             groupName: group.name,
             inviteLink,
+            inviteCode: code,
             expiresInDays: INVITE_EXPIRES_DAYS,
           });
           emailService.sendHtml(data.email, subject, html).catch(() => {}); // fire-and-forget
@@ -251,6 +255,27 @@ class InviteService implements IInviteService {
       )
         throw error;
       logger.error(`Error joining group via token: ${error}`);
+      throw new InternalServerException('Failed to join group.');
+    }
+  }
+
+  async joinByCode(code: string, userId: string): Promise<IGeneralResponse<null>> {
+    logger.info(`User ${userId} attempting to join group via invite code`);
+    try {
+      const invite = await this.inviteRepository.findByCode(code);
+      if (!invite) {
+        logger.warn(`Invite not found for code: ${code}`);
+        throw new ResourceNotFoundException('Invalid invite code.');
+      }
+      return this.joinByToken(invite.token, userId);
+    } catch (error) {
+      if (
+        error instanceof ResourceNotFoundException ||
+        error instanceof BadRequestException ||
+        error instanceof ConflictException
+      )
+        throw error;
+      logger.error(`Error joining group via code: ${error}`);
       throw new InternalServerException('Failed to join group.');
     }
   }

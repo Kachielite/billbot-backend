@@ -11,6 +11,7 @@ export const InviteSchema = pgTable('invites', {
   phone: varchar('phone', { length: 20 }),
   email: varchar('email', { length: 255 }),
   token: varchar('token', { length: 64 }).unique().notNull(),
+  code: varchar('code', { length: 20 }).unique().notNull(),
   status: varchar('status', { length: 20 }).default('pending').notNull(),
   expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
