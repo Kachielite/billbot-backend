@@ -21,6 +21,11 @@ export interface INotificationService {
   ): Promise<IPagination<INotification> & { unread: number }>;
   markRead(id: string, userId: string): Promise<IGeneralResponse<null>>;
   markAllRead(userId: string): Promise<IGeneralResponse<null>>;
+  markReadByMeta(
+    userId: string,
+    type: NotificationType,
+    meta: Record<string, unknown>,
+  ): Promise<void>;
 }
 
 @injectable()
@@ -103,6 +108,18 @@ class NotificationService implements INotificationService {
     } catch (error) {
       logger.error(`Error marking all notifications read: ${error}`);
       throw new InternalServerException('Failed to mark all notifications as read.');
+    }
+  }
+
+  async markReadByMeta(
+    userId: string,
+    type: NotificationType,
+    meta: Record<string, unknown>,
+  ): Promise<void> {
+    try {
+      await this.notificationRepository.markReadByMeta(userId, type, meta);
+    } catch (error) {
+      logger.warn(`Failed to auto-mark notification read (${type}) for user ${userId}: ${error}`);
     }
   }
 }

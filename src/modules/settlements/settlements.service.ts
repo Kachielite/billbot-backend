@@ -263,6 +263,11 @@ class SettlementService implements ISettlementService {
         });
       }
 
+      // Auto-mark the payee's settlement.submitted notification as read
+      this.notificationService
+        .markReadByMeta(userId, 'settlement.submitted', { settlement_id: settlementId })
+        .catch(() => {});
+
       logger.info(`Settlement ${settlementId} confirmed by user ${userId}`);
       return {
         success: true,
@@ -324,6 +329,11 @@ class SettlementService implements ISettlementService {
           reason: data.reason,
         });
       }
+
+      // Auto-mark the payee's settlement.submitted notification as read
+      this.notificationService
+        .markReadByMeta(userId, 'settlement.submitted', { settlement_id: settlementId })
+        .catch(() => {});
 
       // Notify the payer — their payment was rejected
       if (settlement.fromUser) {

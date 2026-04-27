@@ -1,5 +1,5 @@
 import { inject, injectable } from 'tsyringe';
-import { eq, and, count, sql, inArray } from 'drizzle-orm';
+import { eq, and, count, sql, inArray, desc } from 'drizzle-orm';
 import Database from '@/common/lib/database';
 import { GroupSchema, GroupMemberSchema } from './groups.schema';
 import { UserSchema } from '@/modules/users/users.schema';
@@ -134,7 +134,7 @@ class GroupRepositoryImpl implements IGroupRepository {
       .innerJoin(GroupSchema, eq(GroupMemberSchema.groupId, GroupSchema.id))
       .leftJoin(memberCountSq, eq(memberCountSq.groupId, GroupSchema.id))
       .where(eq(GroupMemberSchema.userId, userId))
-      .orderBy(GroupSchema.createdAt)
+      .orderBy(desc(GroupSchema.createdAt))
       .limit(limit)
       .offset(offset);
 

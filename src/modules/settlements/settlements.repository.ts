@@ -1,5 +1,5 @@
 import { inject, injectable } from 'tsyringe';
-import { eq } from 'drizzle-orm';
+import { eq, desc } from 'drizzle-orm';
 import Database from '@/common/lib/database';
 import { SettlementSchema } from './settlements.schema';
 import { ISettlement } from './settlements.interface';
@@ -58,7 +58,8 @@ class SettlementRepositoryImpl implements ISettlementRepository {
     const rows = await this.db.client
       .select()
       .from(SettlementSchema)
-      .where(eq(SettlementSchema.poolId, poolId));
+      .where(eq(SettlementSchema.poolId, poolId))
+      .orderBy(desc(SettlementSchema.createdAt));
     return rows as unknown as ISettlement[];
   }
 

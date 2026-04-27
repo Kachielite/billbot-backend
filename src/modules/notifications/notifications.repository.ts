@@ -1,5 +1,5 @@
 import { inject, injectable } from 'tsyringe';
-import { and, desc, eq } from 'drizzle-orm';
+import { and, desc, eq, sql } from 'drizzle-orm';
 import Database from '@/common/lib/database';
 import { NotificationSchema } from './notifications.schema';
 import { INotification, ICreateNotification } from './notifications.interface';
@@ -11,6 +11,7 @@ export interface INotificationRepository {
   countUnreadByUser(userId: string): Promise<number>;
   markRead(id: string, userId: string): Promise<void>;
   markAllRead(userId: string): Promise<void>;
+  markReadByMeta(userId: string, type: string, meta: Record<string, unknown>): Promise<void>;
 }
 
 @injectable()
@@ -71,6 +72,20 @@ class NotificationRepositoryImpl implements INotificationRepository {
       .update(NotificationSchema)
       .set({ isRead: true })
       .where(and(eq(NotificationSchema.userId, userId), eq(NotificationSchema.isRead, false)));
+  }
+
+  async markReadByMeta(userId: string, type: string, meta: Record<string, unknown>): Promise<void> {
+    await this.db.client
+      .update(NotificationSchema)
+      .set({ isRead: true })
+      .where(
+        and(
+          eq(NotificationSchema.userId, userId),
+          eq(NotificationSchema.type, type as never),
+          eq(NotificationSchema.isRead, false),
+          sql`${NotificationSchema.metadata} @> ${JSON.stringify(meta)}::jsonb`,
+        ),
+      );
   }
 }
 

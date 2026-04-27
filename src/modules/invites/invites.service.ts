@@ -245,6 +245,11 @@ class InviteService implements IInviteService {
           .catch(() => {});
       }
 
+      // Auto-mark the user's invite.received notification as read
+      this.notificationService
+        .markReadByMeta(userId, 'invite.received', { invite_token: invite.token })
+        .catch(() => {});
+
       logger.info(`User ${userId} joined group ${invite.groupId} via invite ${invite.id}`);
       return { success: true, message: 'You have joined the group.', data: null };
     } catch (error) {

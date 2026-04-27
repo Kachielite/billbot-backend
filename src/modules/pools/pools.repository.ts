@@ -1,5 +1,5 @@
 import { inject, injectable } from 'tsyringe';
-import { eq, and, inArray, sql, count } from 'drizzle-orm';
+import { eq, and, inArray, sql, count, desc } from 'drizzle-orm';
 import Database from '@/common/lib/database';
 import { ExpensePoolSchema, PoolMemberSchema } from './pools.schema';
 import { UserSchema } from '@/modules/users/users.schema';
@@ -85,6 +85,7 @@ class PoolRepositoryImpl implements IPoolRepository {
         .select()
         .from(ExpensePoolSchema)
         .where(eq(ExpensePoolSchema.groupId, groupId))
+        .orderBy(desc(ExpensePoolSchema.createdAt))
         .limit(limit)
         .offset(offset),
       this.db.client
