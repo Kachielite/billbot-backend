@@ -6,6 +6,7 @@ export const UserSchema = pgTable('users', {
   phone: varchar('phone', { length: 20 }),
   email: varchar('email', { length: 255 }).unique(),
   avatarUrl: text('avatar_url'),
+  currency: varchar('currency', { length: 10 }).default('NGN').notNull(),
   googleId: varchar('google_id', { length: 100 }).unique(),
   appleId: varchar('apple_id', { length: 100 }).unique(),
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),

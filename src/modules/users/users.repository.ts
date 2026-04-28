@@ -92,6 +92,7 @@ class UserRepositoryImpl implements IUserRepository {
     if (data.email !== undefined) updateData.email = data.email;
     if (data.phone !== undefined) updateData.phone = data.phone;
     if (data.avatarUrl !== undefined) updateData.avatarUrl = data.avatarUrl;
+    if (data.currency !== undefined) updateData.currency = data.currency;
     if (data.googleId !== undefined) updateData.googleId = data.googleId;
     if (data.appleId !== undefined) updateData.appleId = data.appleId;
 

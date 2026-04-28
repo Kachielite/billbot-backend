@@ -4,6 +4,7 @@ export interface IUser {
   phone: string | null;
   email: string | null;
   avatarUrl: string | null;
+  currency: string;
   googleId: string | null;
   appleId: string | null;
   createdAt: Date;
@@ -24,6 +25,7 @@ export interface IUpdateUser {
   email?: string | null;
   phone?: string | null;
   avatarUrl?: string | null;
+  currency?: string;
   googleId?: string | null;
   appleId?: string | null;
 }

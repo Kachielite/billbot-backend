@@ -5,6 +5,7 @@ export const UpdateUserSchema = z.object({
   email: z.string().email().nullable().optional(),
   avatar_url: z.string().url().nullable().optional(),
   phone: z.string().nullable().optional(),
+  currency_id: z.number().int().min(1).max(4).optional(),
 });
 export type UpdateUserDTO = z.infer<typeof UpdateUserSchema>;
 
@@ -14,7 +15,11 @@ export const UserResponseSchema = z.object({
   phone: z.string().nullable(),
   email: z.string().nullable(),
   avatar_url: z.string().nullable(),
-  currency: z.string(),
+  currency: z.object({
+    id: z.number(),
+    code: z.string(),
+    symbol: z.string(),
+  }),
   created_at: z.date(),
 });
 export type UserResponseDTO = z.infer<typeof UserResponseSchema>;

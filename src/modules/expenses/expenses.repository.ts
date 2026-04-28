@@ -78,6 +78,10 @@ export interface IExpenseRepository {
     userId: string,
     poolIds: string[],
   ): Promise<Map<string, { totalOwed: number; totalOwedToMe: number }>>;
+  getPoolStats(
+    poolId: string,
+  ): Promise<{ total_amount: number; amount_collected: number; outstanding: number }>;
+  getTotalSpendByGroup(groupId: string): Promise<number>;
 }
 
 @injectable()
@@ -475,6 +479,34 @@ class ExpenseRepositoryImpl implements IExpenseRepository {
       }
     }
     return map;
+  }
+
+  async getPoolStats(
+    poolId: string,
+  ): Promise<{ total_amount: number; amount_collected: number; outstanding: number }> {
+    const [totalRow, collectedRow] = await Promise.all([
+      this.db.client
+        .select({ total: sql<string>`COALESCE(SUM(${ExpenseSchema.amount}::numeric), '0')` })
+        .from(ExpenseSchema)
+        .where(eq(ExpenseSchema.poolId, poolId)),
+      this.db.client
+        .select({ total: sql<string>`COALESCE(SUM(${ExpenseSplitSchema.amount}::numeric), '0')` })
+        .from(ExpenseSplitSchema)
+        .innerJoin(ExpenseSchema, eq(ExpenseSplitSchema.expenseId, ExpenseSchema.id))
+        .where(and(eq(ExpenseSchema.poolId, poolId), eq(ExpenseSplitSchema.settled, true))),
+    ]);
+    const total_amount = parseFloat(totalRow[0]?.total ?? '0');
+    const amount_collected = parseFloat(collectedRow[0]?.total ?? '0');
+    return { total_amount, amount_collected, outstanding: total_amount - amount_collected };
+  }
+
+  async getTotalSpendByGroup(groupId: string): Promise<number> {
+    const [row] = await this.db.client
+      .select({ total: sql<string>`COALESCE(SUM(${ExpenseSchema.amount}::numeric), '0')` })
+      .from(ExpenseSchema)
+      .innerJoin(ExpensePoolSchema, eq(ExpenseSchema.poolId, ExpensePoolSchema.id))
+      .where(eq(ExpensePoolSchema.groupId, groupId));
+    return parseFloat(row?.total ?? '0');
   }
 
   private buildExpenseConditions(base: ReturnType<typeof eq>, filter?: IExpenseFilter) {

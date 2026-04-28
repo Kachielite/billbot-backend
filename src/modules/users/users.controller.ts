@@ -1,12 +1,34 @@
 import { inject, injectable } from 'tsyringe';
-import express, { Request } from 'express';
-import { BaseController, Controller, Get, Put } from '@/common/decorators/controller.decorator';
+import express, { Request, Response, NextFunction } from 'express';
+import multer from 'multer';
+import {
+  BaseController,
+  Controller,
+  Get,
+  Patch,
+  Put,
+} from '@/common/decorators/controller.decorator';
 import { ROUTER_TOKENS } from '@/common/constants/router.tokens';
 import UserService, { IUserService } from './users.service';
 import ExpenseService, { IExpenseService } from '@/modules/expenses/expenses.service';
 import ActivityService, { IActivityService } from '@/modules/activities/activities.service';
 import { UpdateUserSchema, UpdateUserDTO } from './users.dto';
 import { IAuthenticatedRequest } from '@/common/types/interface';
+import { BadRequestException } from '@/common/exception';
+import { validateImageMagicBytes } from '@/common/utils/file-validator';
+import { getAllCurrencies } from '@/common/utils/currency';
+
+const avatarUpload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 5 * 1024 * 1024 }, // 5 MB
+  fileFilter: (_req, file, cb) => {
+    if (['image/jpeg', 'image/png', 'image/webp'].includes(file.mimetype)) {
+      cb(null, true);
+    } else {
+      cb(new Error('Only JPEG, PNG, and WebP images are allowed'));
+    }
+  },
+});
 
 /**
  * @swagger
@@ -48,7 +70,12 @@ class UserController extends BaseController {
    *                 phone: { type: string, nullable: true }
    *                 email: { type: string, nullable: true }
    *                 avatar_url: { type: string, nullable: true }
-   *                 currency: { type: string, example: '₦' }
+   *                 currency:
+   *                   type: object
+   *                   properties:
+   *                     id: { type: integer, example: 1 }
+   *                     code: { type: string, example: NGN }
+   *                     symbol: { type: string, example: '₦' }
    *                 created_at: { type: string, format: date-time }
    *       '401':
    *         $ref: '#/components/responses/Unauthorized'
@@ -78,6 +105,7 @@ class UserController extends BaseController {
    *               email: { type: string, format: email, nullable: true }
    *               avatar_url: { type: string, nullable: true }
    *               phone: { type: string, nullable: true }
+   *               currency_id: { type: integer, example: 1, description: 'ID from GET /currencies' }
    *     responses:
    *       '200':
    *         description: Updated profile
@@ -91,6 +119,12 @@ class UserController extends BaseController {
    *                 email: { type: string, nullable: true }
    *                 avatar_url: { type: string, nullable: true }
    *                 phone: { type: string, nullable: true }
+   *                 currency:
+   *                   type: object
+   *                   properties:
+   *                     id: { type: integer, example: 1 }
+   *                     code: { type: string, example: NGN }
+   *                     symbol: { type: string, example: '₦' }
    *                 created_at: { type: string, format: date-time }
    *       '400':
    *         $ref: '#/components/responses/BadRequest'
@@ -308,6 +342,99 @@ class UserController extends BaseController {
       Math.max(1, parseInt(String(req.query['limit'] ?? '20'), 10) || 20),
     );
     return this.expenseService.listUpcomingExpenses(userId, page, limit);
+  }
+
+  /**
+   * @swagger
+   * /users/me/avatar:
+   *   patch:
+   *     tags: [Users]
+   *     summary: Upload a new avatar image
+   *     security:
+   *       - bearerAuth: []
+   *     requestBody:
+   *       required: true
+   *       content:
+   *         multipart/form-data:
+   *           schema:
+   *             type: object
+   *             required: [avatar]
+   *             properties:
+   *               avatar: { type: string, format: binary, description: 'JPEG, PNG, or WebP — max 5 MB' }
+   *     responses:
+   *       '200':
+   *         description: Updated profile with new avatar_url
+   *         content:
+   *           application/json:
+   *             schema:
+   *               type: object
+   *               properties:
+   *                 id: { type: string }
+   *                 name: { type: string }
+   *                 email: { type: string, nullable: true }
+   *                 avatar_url: { type: string }
+   *                 phone: { type: string, nullable: true }
+   *                 currency:
+   *                   type: object
+   *                   properties:
+   *                     id: { type: integer }
+   *                     code: { type: string }
+   *                     symbol: { type: string }
+   *                 created_at: { type: string, format: date-time }
+   *       '400':
+   *         $ref: '#/components/responses/BadRequest'
+   *       '401':
+   *         $ref: '#/components/responses/Unauthorized'
+   */
+  /**
+   * @swagger
+   * /users/currencies:
+   *   get:
+   *     tags: [Users]
+   *     summary: List supported currencies
+   *     description: Returns the full list of currencies the user can select for their profile.
+   *     security:
+   *       - bearerAuth: []
+   *     responses:
+   *       '200':
+   *         description: List of supported currencies
+   *         content:
+   *           application/json:
+   *             schema:
+   *               type: array
+   *               items:
+   *                 type: object
+   *                 properties:
+   *                   id: { type: integer, example: 1 }
+   *                   code: { type: string, example: NGN }
+   *                   symbol: { type: string, example: '₦' }
+   *       '401':
+   *         $ref: '#/components/responses/Unauthorized'
+   */
+  @Get('/currencies')
+  async listCurrencies() {
+    return getAllCurrencies();
+  }
+
+  @Patch('/me/avatar')
+  async uploadAvatar(req: Request, res: Response, next: NextFunction) {
+    avatarUpload.single('avatar')(req, res, async (err) => {
+      if (err) return next(new BadRequestException(err.message));
+
+      try {
+        if (!req.file) return next(new BadRequestException('No image file provided.'));
+
+        if (!validateImageMagicBytes(req.file.buffer, req.file.mimetype)) {
+          return next(new BadRequestException('File content does not match the declared type.'));
+        }
+
+        const userId = (req as unknown as IAuthenticatedRequest).user?.id as string;
+        const result = await this.userService.updateAvatar(userId, req.file);
+        res.status(200).json(result);
+      } catch (e) {
+        next(e);
+      }
+    });
   }
 }
 

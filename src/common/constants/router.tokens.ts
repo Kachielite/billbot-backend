@@ -11,4 +11,7 @@ export const ROUTER_TOKENS = {
   WEBHOOKS: Symbol.for('WebhooksRouter'),
   CATEGORIES: Symbol.for('CategoriesRouter'),
   NOTIFICATIONS: Symbol.for('NotificationsRouter'),
+  USERS_SUMMARY: Symbol.for('UsersSummaryRouter'),
+  GROUPS_SUMMARY: Symbol.for('GroupsSummaryRouter'),
+  POOLS_SUMMARY: Symbol.for('PoolsSummaryRouter'),
 };

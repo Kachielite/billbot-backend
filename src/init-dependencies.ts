@@ -34,6 +34,7 @@ import {
 } from '@/modules/categories/categories.dependencies';
 import { registerNotificationDependencies } from '@/modules/notifications/notifications.dependencies';
 import { registerActivityDependencies } from '@/modules/activities/activities.dependencies';
+import { registerSummaryDependencies } from '@/modules/summary/summary.dependencies';
 
 export async function configureContainer(): Promise<void> {
   // Core singletons
@@ -79,6 +80,8 @@ export async function configureContainer(): Promise<void> {
   registerBalanceDependencies();
   // 15. Settlements (needs IActivityRepository)
   registerSettlementDependencies();
+  // 16. Summary (composes from all repositories — must be last)
+  registerSummaryDependencies();
 
   // Seed reference data (idempotent — skips if already populated)
   await seedCategories();

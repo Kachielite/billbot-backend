@@ -2,12 +2,14 @@ import { inject, injectable } from 'tsyringe';
 import { IUserRepository } from './users.repository';
 import { UpdateUserDTO, UserResponseDTO } from './users.dto';
 import { InternalServerException, ResourceNotFoundException } from '@/common/exception';
-import { getCurrencySymbol } from '@/common/utils/currency';
+import { getCurrency, getCurrencyById } from '@/common/utils/currency';
+import { uploadFile } from '@/common/lib/storage';
 import logger from '@/common/lib/logger';
 
 export interface IUserService {
   getMe(userId: string): Promise<UserResponseDTO>;
   updateMe(userId: string, data: UpdateUserDTO): Promise<UserResponseDTO>;
+  updateAvatar(userId: string, file: Express.Multer.File): Promise<UserResponseDTO>;
   searchByPhone(phone: string): Promise<UserResponseDTO>;
 }
 
@@ -35,17 +37,32 @@ class UserService implements IUserService {
   async updateMe(userId: string, data: UpdateUserDTO): Promise<UserResponseDTO> {
     logger.info(`Updating profile for user ${userId}`);
     try {
+      const currency = data.currency_id ? getCurrencyById(data.currency_id)?.code : undefined;
       const updated = await this.userRepository.update(userId, {
         name: data.name,
         email: data.email,
         avatarUrl: data.avatar_url,
         phone: data.phone,
+        currency,
       });
       logger.info(`Profile updated successfully for user ${userId}`);
       return this.mapToDTO(updated);
     } catch (error) {
       logger.error(`Error updating user ${userId}: ${error}`);
       throw new InternalServerException('Failed to update user profile.');
+    }
+  }
+
+  async updateAvatar(userId: string, file: Express.Multer.File): Promise<UserResponseDTO> {
+    logger.info(`Uploading avatar for user ${userId}`);
+    try {
+      const avatarUrl = await uploadFile('billbot/avatars', userId, file.buffer, file.mimetype);
+      const updated = await this.userRepository.update(userId, { avatarUrl });
+      logger.info(`Avatar updated for user ${userId}`);
+      return this.mapToDTO(updated);
+    } catch (error) {
+      logger.error(`Error updating avatar for user ${userId}: ${error}`);
+      throw new InternalServerException('Failed to upload avatar.');
     }
   }
 
@@ -72,6 +89,7 @@ class UserService implements IUserService {
     phone: string | null;
     email: string | null;
     avatarUrl: string | null;
+    currency: string;
     createdAt: Date;
   }): UserResponseDTO {
     return {
@@ -80,7 +98,7 @@ class UserService implements IUserService {
       phone: user.phone,
       email: user.email,
       avatar_url: user.avatarUrl,
-      currency: getCurrencySymbol('NGN'),
+      currency: getCurrency(user.currency),
       created_at: user.createdAt,
     };
   }
