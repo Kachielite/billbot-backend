@@ -17,7 +17,7 @@
     "db:seed": "ts-node -r tsconfig-paths/register scripts/seed.ts",
     "db:reset": "ts-node -r tsconfig-paths/register scripts/reset.ts",
     "db:reset:full": "ts-node -r tsconfig-paths/register scripts/reset.ts --full",
-    "prepare": "husky"
+    "prepare": "husky || true"
   },
   "dependencies": {
     "apple-signin-auth": "^1.7.6",
