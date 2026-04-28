@@ -4,6 +4,12 @@ import { drizzle } from 'drizzle-orm/node-postgres';
 import { sql } from 'drizzle-orm';
 import { CONSTANTS } from '../src/common/configuration/constants';
 
+if (CONSTANTS.NODE_ENV === 'production') {
+  // eslint-disable-next-line no-console
+  console.error('[reset] Refusing to run reset script in production.');
+  process.exit(1);
+}
+
 const pool = new Pool({ connectionString: CONSTANTS.DATABASE_URL });
 const db = drizzle(pool);
 

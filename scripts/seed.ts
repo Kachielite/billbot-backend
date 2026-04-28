@@ -5,6 +5,12 @@ import { CONSTANTS } from '../src/common/configuration/constants';
 import { sql } from 'drizzle-orm';
 import { SEEDED_CATEGORIES } from '../src/modules/categories/categories.seeder';
 
+if (CONSTANTS.NODE_ENV === 'production') {
+  // eslint-disable-next-line no-console
+  console.error('[seed] Refusing to run seed script in production.');
+  process.exit(1);
+}
+
 const pool = new Pool({ connectionString: CONSTANTS.DATABASE_URL });
 const db = drizzle(pool);
 
