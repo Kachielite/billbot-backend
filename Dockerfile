@@ -1,6 +1,7 @@
 # Stage 1: Build
 FROM node:20-slim AS builder
 WORKDIR /app
+ENV HUSKY=0
 COPY package*.json ./
 RUN npm ci
 COPY . .
@@ -10,6 +11,7 @@ RUN npm run build
 FROM node:20-slim AS production
 WORKDIR /app
 ENV NODE_ENV=production
+ENV HUSKY=0
 COPY package*.json ./
 RUN npm ci --omit=dev
 COPY --from=builder /app/dist ./dist
