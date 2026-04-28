@@ -39,8 +39,12 @@ const fileFormat = combine(
 );
 
 const logger = winston.createLogger({
-  level: isProduction ? 'warn' : 'info',
+  level: 'info',
   transports: [
+    new winston.transports.Console({
+      level: isProduction ? 'info' : 'debug',
+      format: consoleFormat,
+    }),
     new winston.transports.File({
       filename: path.join(logDir, 'error.log'),
       level: 'error',
@@ -52,13 +56,5 @@ const logger = winston.createLogger({
     }),
   ],
 });
-
-if (!isProduction) {
-  logger.add(
-    new winston.transports.Console({
-      format: consoleFormat,
-    }),
-  );
-}
 
 export default logger;
