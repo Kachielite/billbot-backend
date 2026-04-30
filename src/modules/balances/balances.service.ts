@@ -121,11 +121,8 @@ class BalanceService implements IBalanceService {
       // Simplify debts using greedy algorithm
       const balances = this.simplifyDebts(nets, memberMap);
       const total_amount = expenses.reduce((sum, e) => sum + parseFloat(e.amount), 0);
-      const amount_collected = splits.reduce(
-        (sum, s) => (s.settled ? sum + parseFloat(s.amount) : sum),
-        0,
-      );
-      const outstanding = total_amount - amount_collected;
+      const outstanding = Math.round(balances.reduce((sum, b) => sum + b.amount, 0) * 100) / 100;
+      const amount_collected = Math.max(0, total_amount - outstanding);
 
       logger.info(
         `Balance calculation complete for pool ${poolId}: ${balances.length} balance entry/entries`,
@@ -207,11 +204,8 @@ class BalanceService implements IBalanceService {
       );
       const balances = this.simplifyDebts(nets, poolMemberMap);
       const total_amount = expenses.reduce((sum, e) => sum + parseFloat(e.amount), 0);
-      const amount_collected = splits.reduce(
-        (sum, s) => (s.settled ? sum + parseFloat(s.amount) : sum),
-        0,
-      );
-      const outstanding = total_amount - amount_collected;
+      const outstanding = Math.round(balances.reduce((sum, b) => sum + b.amount, 0) * 100) / 100;
+      const amount_collected = Math.max(0, total_amount - outstanding);
 
       logger.info(
         `Group balance calculation complete for group ${groupId}: ${balances.length} balance entry/entries`,
