@@ -90,12 +90,16 @@ export class RecurringExpenseScheduler {
     const members = await this.poolRepository.getMembers(template.poolId);
     if (members.length > 0) {
       const splitAmount = (parseFloat(template.amount) / members.length).toFixed(2);
+      const splitCreatedAt = new Date();
       for (const m of members) {
+        const isPayerSplit = m.userId === template.paidBy;
         await this.expenseRepository.createSplit({
           id: uuidv4(),
           expenseId: instance.id,
           owedBy: m.userId,
           amount: splitAmount,
+          settled: isPayerSplit,
+          settledAt: isPayerSplit ? splitCreatedAt : null,
         });
       }
     }
