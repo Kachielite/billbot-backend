@@ -354,12 +354,6 @@ class ExpenseService implements IExpenseService {
         throw new ForbiddenException('Only the payer can delete an expense.');
       }
 
-      const hasSettled = await this.expenseRepository.hasSettledSplits(expenseId);
-      if (hasSettled) {
-        logger.warn(`Expense ${expenseId} has settled splits — delete denied`);
-        throw new BadRequestException('Cannot delete an expense with settled splits.');
-      }
-
       const pool = await this.poolRepository.findById(expense.poolId);
       await this.expenseRepository.delete(expenseId);
 

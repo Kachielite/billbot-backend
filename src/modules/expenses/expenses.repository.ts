@@ -47,7 +47,6 @@ export interface IExpenseRepository {
   getSplitsByExpense(expenseId: string): Promise<IExpenseSplit[]>;
   getSplitsByExpenseIds(expenseIds: string[]): Promise<IExpenseSplit[]>;
   getSplitsByPool(poolId: string): Promise<IExpenseSplit[]>;
-  hasSettledSplits(expenseId: string): Promise<boolean>;
   markSplitSettled(splitId: string): Promise<void>;
   partiallySettleSplit(splitId: string, amount: number): Promise<void>;
   getUnsettledObligationSplits(
@@ -224,15 +223,6 @@ class ExpenseRepositoryImpl implements IExpenseRepository {
       .innerJoin(ExpenseSchema, eq(ExpenseSplitSchema.expenseId, ExpenseSchema.id))
       .where(eq(ExpenseSchema.poolId, poolId));
     return rows.map((r) => r.split) as unknown as IExpenseSplit[];
-  }
-
-  async hasSettledSplits(expenseId: string): Promise<boolean> {
-    const rows = await this.db.client
-      .select()
-      .from(ExpenseSplitSchema)
-      .where(and(eq(ExpenseSplitSchema.expenseId, expenseId), eq(ExpenseSplitSchema.settled, true)))
-      .limit(1);
-    return rows.length > 0;
   }
 
   async markSplitSettled(splitId: string): Promise<void> {
