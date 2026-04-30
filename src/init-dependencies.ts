@@ -76,10 +76,10 @@ export async function configureContainer(): Promise<void> {
   registerGroupDependencies();
   // 13. User controller (UserController needs IExpenseService + ActivityService)
   registerUserDependencies();
-  // 14. Balances
-  registerBalanceDependencies();
-  // 15. Settlements (needs IActivityRepository)
+  // 14. Settlements (needs IActivityRepository; ISettlementRepository needed by Balances)
   registerSettlementDependencies();
+  // 15. Balances (needs ISettlementRepository)
+  registerBalanceDependencies();
   // 16. Summary (composes from all repositories — must be last)
   registerSummaryDependencies();
 
