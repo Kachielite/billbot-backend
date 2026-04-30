@@ -631,7 +631,7 @@ class ExpenseRepositoryImpl implements IExpenseRepository {
   async getPoolStats(
     poolId: string,
   ): Promise<{ total_amount: number; amount_collected: number; outstanding: number }> {
-    const [totalRow, collectedRow] = await Promise.all([
+    const [totalRow, collectedRow, settlementRows, settledForMeRow] = await Promise.all([
       this.db.client
         .select({ total: sql<string>`COALESCE(SUM(${ExpenseSchema.amount}::numeric), '0')` })
         .from(ExpenseSchema)
@@ -641,9 +641,47 @@ class ExpenseRepositoryImpl implements IExpenseRepository {
         .from(ExpenseSplitSchema)
         .innerJoin(ExpenseSchema, eq(ExpenseSplitSchema.expenseId, ExpenseSchema.id))
         .where(and(eq(ExpenseSchema.poolId, poolId), eq(ExpenseSplitSchema.settled, true))),
+      // All confirmed settlements in this pool, grouped by fromUser
+      this.db.client
+        .select({
+          fromUser: SettlementSchema.fromUser,
+          toUser: SettlementSchema.toUser,
+          total: sql<string>`COALESCE(SUM(${SettlementSchema.amount}::numeric), '0')`,
+        })
+        .from(SettlementSchema)
+        .where(and(eq(SettlementSchema.poolId, poolId), eq(SettlementSchema.status, 'settled')))
+        .groupBy(SettlementSchema.fromUser, SettlementSchema.toUser),
+      // Settled splits per (owedBy, paidBy) pair — to compute what each settlement directly matched
+      this.db.client
+        .select({
+          owedBy: ExpenseSplitSchema.owedBy,
+          paidBy: ExpenseSchema.paidBy,
+          total: sql<string>`COALESCE(SUM(${ExpenseSplitSchema.amount}::numeric), '0')`,
+        })
+        .from(ExpenseSplitSchema)
+        .innerJoin(ExpenseSchema, eq(ExpenseSplitSchema.expenseId, ExpenseSchema.id))
+        .where(and(eq(ExpenseSchema.poolId, poolId), eq(ExpenseSplitSchema.settled, true)))
+        .groupBy(ExpenseSplitSchema.owedBy, ExpenseSchema.paidBy),
     ]);
+
     const total_amount = parseFloat(totalRow[0]?.total ?? '0');
-    const amount_collected = parseFloat(collectedRow[0]?.total ?? '0');
+    let amount_collected = parseFloat(collectedRow[0]?.total ?? '0');
+
+    // Add excess credit from confirmed settlements (amount sent beyond directly matched settled splits)
+    const settledPairMap = new Map<string, number>();
+    for (const r of settledForMeRow) {
+      if (r.owedBy && r.paidBy) {
+        settledPairMap.set(`${r.owedBy}:${r.paidBy}`, parseFloat(r.total));
+      }
+    }
+    for (const s of settlementRows) {
+      if (!s.fromUser || !s.toUser) continue;
+      const matched = settledPairMap.get(`${s.fromUser}:${s.toUser}`) ?? 0;
+      const excess = Math.max(0, parseFloat(s.total) - matched);
+      amount_collected += excess;
+    }
+
+    amount_collected = Math.min(amount_collected, total_amount);
     return { total_amount, amount_collected, outstanding: total_amount - amount_collected };
   }
 
