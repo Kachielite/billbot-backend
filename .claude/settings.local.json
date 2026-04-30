@@ -18,7 +18,9 @@
       "Bash(npx tsx *)",
       "Bash(psql postgresql://postgres:madumere@localhost:5432/billbot -c \"\\\\d users\")",
       "Bash(git *)",
-      "Bash(psql *)"
+      "Bash(psql *)",
+      "Bash(python3 -c ' *)",
+      "Bash(python3 *)"
     ]
   }
 }

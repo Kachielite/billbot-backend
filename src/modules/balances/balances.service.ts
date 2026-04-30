@@ -2,7 +2,6 @@ import { inject, injectable } from 'tsyringe';
 import { IExpenseRepository } from '@/modules/expenses/expenses.repository';
 import { IPoolRepository } from '@/modules/pools/pools.repository';
 import { IGroupRepository } from '@/modules/groups/groups.repository';
-import { ISettlementRepository } from '@/modules/settlements/settlements.repository';
 import {
   ForbiddenException,
   InternalServerException,
@@ -51,7 +50,6 @@ class BalanceService implements IBalanceService {
     @inject('IExpenseRepository') private expenseRepository: IExpenseRepository,
     @inject('IPoolRepository') private poolRepository: IPoolRepository,
     @inject('IGroupRepository') private groupRepository: IGroupRepository,
-    @inject('ISettlementRepository') private settlementRepository: ISettlementRepository,
   ) {}
 
   async getPoolBalances(poolId: string, userId: string): Promise<IBalanceResult> {
@@ -72,18 +70,16 @@ class BalanceService implements IBalanceService {
       const members = await this.poolRepository.getMembers(poolId);
       const memberMap = new Map(members.map((m) => [m.userId, m]));
 
-      const [expenses, splits, settlements] = await Promise.all([
+      const [expenses, splits] = await Promise.all([
         this.expenseRepository.findAllByPool(poolId),
         this.expenseRepository.getSplitsByPool(poolId),
-        this.settlementRepository.findByPool(poolId),
       ]);
 
       logger.info(
         `Computing balances from ${expenses.length} expense(s) and ${splits.length} split(s) for pool ${poolId}`,
       );
 
-      // For each unsettled split (excluding payer's own): credit payer, debit debtor.
-      // This produces nets that sum to zero so simplifyDebts works correctly.
+      // For each split with remaining balance (excluding payer's own): credit payer, debit debtor.
       const expensePaidByMap = new Map(expenses.map((e) => [e.id, e.paidBy]));
       const totals = new Map<string, { paid: number; owed: number }>();
       for (const m of members) {
@@ -91,15 +87,14 @@ class BalanceService implements IBalanceService {
       }
 
       for (const split of splits) {
-        if (split.settled || !split.owedBy) continue;
+        const remaining = parseFloat(split.amountRemaining);
+        if (split.settled || !split.owedBy || remaining < 0.01) continue;
         const paidBy = expensePaidByMap.get(split.expenseId);
         if (!paidBy || split.owedBy === paidBy) continue;
 
-        if (totals.has(paidBy)) totals.get(paidBy)!.paid += parseFloat(split.amount);
-        if (totals.has(split.owedBy)) totals.get(split.owedBy)!.owed += parseFloat(split.amount);
+        if (totals.has(paidBy)) totals.get(paidBy)!.paid += remaining;
+        if (totals.has(split.owedBy)) totals.get(split.owedBy)!.owed += remaining;
       }
-
-      this.applySettlementAdjustments(totals, splits, expensePaidByMap, settlements);
 
       // Member summaries
       const member_summary: IMemberSummary[] = [];
@@ -155,17 +150,16 @@ class BalanceService implements IBalanceService {
       const members = membersMap.get(groupId) ?? [];
       const memberMap = new Map(members.map((m) => [m.user_id, m]));
 
-      const [expenses, splits, settlements] = await Promise.all([
+      const [expenses, splits] = await Promise.all([
         this.expenseRepository.findAllByGroup(groupId),
         this.expenseRepository.getSplitsByGroup(groupId),
-        this.settlementRepository.findByGroup(groupId),
       ]);
 
       logger.info(
         `Computing group balances from ${expenses.length} expense(s) and ${splits.length} split(s) for group ${groupId}`,
       );
 
-      // For each unsettled split (excluding payer's own): credit payer, debit debtor.
+      // For each split with remaining balance (excluding payer's own): credit payer, debit debtor.
       const expensePaidByMap = new Map(expenses.map((e) => [e.id, e.paidBy]));
       const totals = new Map<string, { paid: number; owed: number }>();
       for (const m of members) {
@@ -173,15 +167,14 @@ class BalanceService implements IBalanceService {
       }
 
       for (const split of splits) {
-        if (split.settled || !split.owedBy) continue;
+        const remaining = parseFloat(split.amountRemaining);
+        if (split.settled || !split.owedBy || remaining < 0.01) continue;
         const paidBy = expensePaidByMap.get(split.expenseId);
         if (!paidBy || split.owedBy === paidBy) continue;
 
-        if (totals.has(paidBy)) totals.get(paidBy)!.paid += parseFloat(split.amount);
-        if (totals.has(split.owedBy)) totals.get(split.owedBy)!.owed += parseFloat(split.amount);
+        if (totals.has(paidBy)) totals.get(paidBy)!.paid += remaining;
+        if (totals.has(split.owedBy)) totals.get(split.owedBy)!.owed += remaining;
       }
-
-      this.applySettlementAdjustments(totals, splits, expensePaidByMap, settlements);
 
       const member_summary: IMemberSummary[] = [];
       const nets = new Map<string, number>();
@@ -237,42 +230,6 @@ class BalanceService implements IBalanceService {
     } catch (error) {
       logger.error(`Error calculating balance summary for user ${userId}: ${error}`);
       throw new InternalServerException('Failed to calculate balance summary.');
-    }
-  }
-
-  // Adjusts the totals map to account for confirmed settlements that exceeded direct debts.
-  // When A pays B more than A directly owes B, the excess flows through B and offsets
-  // both A's other debts and B's own debts — keeping the simplified graph correct.
-  private applySettlementAdjustments(
-    totals: Map<string, { paid: number; owed: number }>,
-    splits: { expenseId: string; owedBy: string | null; amount: string; settled: boolean }[],
-    expensePaidByMap: Map<string, string | null>,
-    settlements: {
-      fromUser: string | null;
-      toUser: string | null;
-      amount: string;
-      status: string;
-    }[],
-  ): void {
-    // Build settled amount per (owedBy → paidBy) pair from already-settled splits
-    const settledByPair = new Map<string, number>();
-    for (const split of splits) {
-      if (!split.settled || !split.owedBy) continue;
-      const paidBy = expensePaidByMap.get(split.expenseId);
-      if (!paidBy || split.owedBy === paidBy) continue;
-      const key = `${split.owedBy}:${paidBy}`;
-      settledByPair.set(key, (settledByPair.get(key) ?? 0) + parseFloat(split.amount));
-    }
-
-    for (const s of settlements) {
-      if (s.status !== 'settled' || !s.fromUser || !s.toUser) continue;
-      const matched = settledByPair.get(`${s.fromUser}:${s.toUser}`) ?? 0;
-      const excess = Math.max(0, parseFloat(s.amount) - matched);
-      if (excess < 0.01) continue;
-      // Sender paid more than their direct debt → reduce their owed by excess
-      if (totals.has(s.fromUser)) totals.get(s.fromUser)!.owed -= excess;
-      // Receiver got more than their direct receivable → reduce their paid by excess
-      if (totals.has(s.toUser)) totals.get(s.toUser)!.paid -= excess;
     }
   }
 

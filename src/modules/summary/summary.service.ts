@@ -34,7 +34,6 @@ export interface IPoolSummary {
   id: string;
   name: string;
   description: string | null;
-  is_default: boolean;
   member_count: number;
   expense_count: number;
   total_amount: number;
@@ -147,7 +146,6 @@ class SummaryService implements ISummaryService {
         id: pool.id,
         name: pool.name,
         description: pool.description,
-        is_default: pool.isDefault,
         member_count: members.length,
         expense_count: expenseCountMap.get(poolId) ?? 0,
         total_amount: stats.total_amount,

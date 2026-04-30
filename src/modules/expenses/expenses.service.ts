@@ -28,12 +28,6 @@ export interface IExpenseService {
     data: CreateExpenseDTO,
     file?: Express.Multer.File,
   ): Promise<ExpenseResponseDTO>;
-  createExpenseInGroup(
-    groupId: string,
-    userId: string,
-    data: CreateExpenseDTO,
-    file?: Express.Multer.File,
-  ): Promise<ExpenseResponseDTO>;
   parseReceipt(file: Express.Multer.File): Promise<{
     parsed: (Omit<IParsedReceipt, 'category'> & { category_id: string | null }) | null;
     receipt_url: string;
@@ -481,40 +475,6 @@ class ExpenseService implements IExpenseService {
     } catch (error) {
       logger.error(`Error listing upcoming expenses for user ${userId}: ${error}`);
       throw new InternalServerException('Failed to list upcoming expenses.');
-    }
-  }
-
-  async createExpenseInGroup(
-    groupId: string,
-    userId: string,
-    data: CreateExpenseDTO,
-    file?: Express.Multer.File,
-  ): Promise<ExpenseResponseDTO> {
-    logger.info(`Creating expense in group ${groupId} by user ${userId} (resolving General pool)`);
-    try {
-      const generalPool = await this.poolRepository.findDefaultByGroup(groupId);
-      if (!generalPool) {
-        logger.warn(`No General pool found for group ${groupId}`);
-        throw new ResourceNotFoundException('General pool not found for this group.');
-      }
-
-      // Ensure user is a pool member (lazy add for members who joined before General pool existed)
-      const poolMember = await this.poolRepository.getMember(generalPool.id, userId);
-      if (!poolMember) {
-        await this.poolRepository.addMember(generalPool.id, userId);
-        logger.info(`Auto-added user ${userId} to General pool ${generalPool.id}`);
-      }
-
-      return this.createExpense(generalPool.id, userId, data, file);
-    } catch (error) {
-      if (
-        error instanceof ResourceNotFoundException ||
-        error instanceof ForbiddenException ||
-        error instanceof BadRequestException
-      )
-        throw error;
-      logger.error(`Error creating group expense for group ${groupId}: ${error}`);
-      throw new InternalServerException('Failed to create expense.');
     }
   }
 

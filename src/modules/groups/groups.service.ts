@@ -72,21 +72,10 @@ class GroupService implements IGroupService {
 
       await this.groupRepository.addMember(group.id, userId, 'admin');
 
-      const generalPool = await this.poolRepository.create({
-        id: uuidv4(),
-        groupId: group.id,
-        name: 'General',
-        description: null,
-        isDefault: true,
-        createdBy: userId,
-      });
-      await this.poolRepository.addMember(generalPool.id, userId);
-
       this.webhookDispatcher.dispatch(group.id, 'group.created', { group: this.mapToDTO(group) });
 
       logger.info(`Group "${group.name}" (${group.id}) created successfully by user ${userId}`);
-      // General pool is empty on creation → counts as 1 active pool
-      return this.mapToDTO(group, { totalOwed: 0, totalOwedToMe: 0 }, undefined, 1);
+      return this.mapToDTO(group, { totalOwed: 0, totalOwedToMe: 0 }, undefined, 0);
     } catch (error) {
       logger.error(`Error creating group for user ${userId}: ${error}`);
       throw new InternalServerException('Failed to create group.');

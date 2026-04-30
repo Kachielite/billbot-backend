@@ -11,7 +11,6 @@ export interface IPoolRepository {
     groupId: string;
     name: string;
     description?: string | null;
-    isDefault?: boolean;
     createdBy: string;
   }): Promise<IPool>;
   findById(id: string): Promise<IPool | null>;
@@ -20,7 +19,6 @@ export interface IPoolRepository {
     limit: number,
     offset: number,
   ): Promise<{ pools: IPool[]; total: number }>;
-  findDefaultByGroup(groupId: string): Promise<IPool | null>;
   getActivePoolCountByGroups(groupIds: string[]): Promise<Map<string, number>>;
   update(
     id: string,
@@ -50,20 +48,10 @@ class PoolRepositoryImpl implements IPoolRepository {
     groupId: string;
     name: string;
     description?: string | null;
-    isDefault?: boolean;
     createdBy: string;
   }): Promise<IPool> {
     const [row] = await this.db.client.insert(ExpensePoolSchema).values(data).returning();
     return row as unknown as IPool;
-  }
-
-  async findDefaultByGroup(groupId: string): Promise<IPool | null> {
-    const rows = await this.db.client
-      .select()
-      .from(ExpensePoolSchema)
-      .where(and(eq(ExpensePoolSchema.groupId, groupId), eq(ExpensePoolSchema.isDefault, true)))
-      .limit(1);
-    return (rows[0] as unknown as IPool) ?? null;
   }
 
   async findById(id: string): Promise<IPool | null> {

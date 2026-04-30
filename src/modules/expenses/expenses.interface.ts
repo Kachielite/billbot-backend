@@ -20,6 +20,8 @@ export interface IExpenseSplit {
   expenseId: string;
   owedBy: string | null;
   amount: string;
+  amountSettled: string;
+  amountRemaining: string;
   settled: boolean;
   settledAt: Date | null;
 }

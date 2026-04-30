@@ -1,25 +1,9 @@
 import { inject, injectable } from 'tsyringe';
-import express, { Request, Response, NextFunction } from 'express';
-import multer from 'multer';
-import { BaseController, Controller, Get, Post } from '@/common/decorators/controller.decorator';
+import express, { Request } from 'express';
+import { BaseController, Controller, Get } from '@/common/decorators/controller.decorator';
 import { ROUTER_TOKENS } from '@/common/constants/router.tokens';
 import ExpenseService, { IExpenseService } from './expenses.service';
-import { CreateExpenseSchema, CreateExpenseDTO } from './expenses.dto';
 import { IAuthenticatedRequest } from '@/common/types/interface';
-import { BadRequestException } from '@/common/exception';
-import { validateImageMagicBytes } from '@/common/utils/file-validator';
-
-const upload = multer({
-  storage: multer.memoryStorage(),
-  limits: { fileSize: 10 * 1024 * 1024 },
-  fileFilter: (_req, file, cb) => {
-    if (['image/jpeg', 'image/png', 'image/webp'].includes(file.mimetype)) {
-      cb(null, true);
-    } else {
-      cb(new Error('Only JPEG, PNG, and WebP images are allowed'));
-    }
-  },
-});
 
 /**
  * @swagger
@@ -35,95 +19,6 @@ class ExpenseGroupController extends BaseController {
     @inject(ExpenseService) private readonly expenseService: IExpenseService,
   ) {
     super(router);
-  }
-
-  /**
-   * @swagger
-   * /groups/{groupId}/expenses:
-   *   post:
-   *     tags: [Expenses]
-   *     summary: Log an expense in a group
-   *     description: |
-   *       Creates an expense in the group's General pool. No pool selection needed.
-   *       Pass a `splits` array for exact per-person amounts; omit to split equally among all pool members.
-   *     security:
-   *       - bearerAuth: []
-   *     parameters:
-   *       - in: path
-   *         name: groupId
-   *         required: true
-   *         schema: { type: string }
-   *     requestBody:
-   *       required: true
-   *       content:
-   *         multipart/form-data:
-   *           schema:
-   *             type: object
-   *             required: [amount]
-   *             properties:
-   *               amount: { type: number }
-   *               description: { type: string }
-   *               categoryId: { type: string, format: uuid }
-   *               currency: { type: string, enum: [NGN, KES, GHS, ZAR], default: NGN }
-   *               receipt: { type: string, format: binary }
-   *               isRecurring: { type: boolean, default: false }
-   *               recurrenceFrequency: { type: string, enum: [daily, weekly, biweekly, monthly, yearly] }
-   *               recurrenceEndDate: { type: string, format: date-time }
-   *               splits:
-   *                 type: string
-   *                 description: JSON-encoded array e.g. `[{"userId":"<uuid>","amount":3000}]`
-   *     responses:
-   *       '201':
-   *         description: Expense created
-   *       '403':
-   *         $ref: '#/components/responses/Forbidden'
-   *       '404':
-   *         $ref: '#/components/responses/NotFound'
-   *       '401':
-   *         $ref: '#/components/responses/Unauthorized'
-   */
-  @Post('/:groupId/expenses', { statusCode: 201 })
-  async createExpense(req: Request, res: Response, next: NextFunction) {
-    upload.single('receipt')(req, res, async (err) => {
-      if (err) return next(new BadRequestException(err.message));
-
-      try {
-        if (req.file && !validateImageMagicBytes(req.file.buffer, req.file.mimetype)) {
-          return next(new BadRequestException('File content does not match the declared type.'));
-        }
-
-        let rawSplits: unknown = undefined;
-        if (req.body.splits) {
-          try {
-            rawSplits = JSON.parse(req.body.splits as string);
-          } catch {
-            return next(new BadRequestException('splits must be a valid JSON array.'));
-          }
-        }
-
-        const parsed = CreateExpenseSchema.safeParse({
-          ...req.body,
-          amount: Number(req.body.amount),
-          splits: rawSplits,
-        });
-        if (!parsed.success) {
-          return next(
-            new BadRequestException(parsed.error.errors[0]?.message || 'Validation failed'),
-          );
-        }
-
-        const userId = (req as unknown as IAuthenticatedRequest).user?.id as string;
-        const result = await this.expenseService.createExpenseInGroup(
-          req.params['groupId'] as string,
-          userId,
-          parsed.data as CreateExpenseDTO,
-          req.file,
-        );
-        res.status(201).json(result);
-      } catch (e) {
-        next(e);
-      }
-    });
   }
 
   /**

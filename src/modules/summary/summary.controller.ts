@@ -160,7 +160,6 @@ export class GroupSummaryController extends BaseController {
  *                 id: { type: string }
  *                 name: { type: string }
  *                 description: { type: string, nullable: true }
- *                 is_default: { type: boolean }
  *                 member_count: { type: integer }
  *                 expense_count: { type: integer }
  *                 total_amount: { type: number, description: Sum of all expense amounts }
