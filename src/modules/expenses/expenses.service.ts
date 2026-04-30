@@ -176,12 +176,16 @@ class ExpenseService implements IExpenseService {
         resolvedSplits = members.map((m) => ({ userId: m.userId, amount: splitAmount }));
       }
 
+      const splitCreatedAt = new Date();
       for (const s of resolvedSplits) {
+        const isPayerSplit = s.userId === userId;
         await this.expenseRepository.createSplit({
           id: uuidv4(),
           expenseId: expense.id,
           owedBy: s.userId,
           amount: s.amount,
+          settled: isPayerSplit,
+          settledAt: isPayerSplit ? splitCreatedAt : null,
         });
       }
 

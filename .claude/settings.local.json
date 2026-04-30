@@ -17,7 +17,8 @@
       "Bash(npx ts-node -r tsconfig-paths/register -e ' *)",
       "Bash(npx tsx *)",
       "Bash(psql postgresql://postgres:madumere@localhost:5432/billbot -c \"\\\\d users\")",
-      "Bash(git *)"
+      "Bash(git *)",
+      "Bash(psql *)"
     ]
   }
 }
