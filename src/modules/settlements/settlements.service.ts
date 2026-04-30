@@ -249,6 +249,15 @@ class SettlementService implements ISettlementService {
           parseFloat(settlement.amount),
         );
 
+        // If the pool is now fully settled economically, sweep all remaining splits
+        const stats = await this.expenseRepository.getPoolStats(settlement.poolId);
+        if (stats.outstanding <= 0.01) {
+          logger.info(
+            `Pool ${settlement.poolId} fully settled — marking all remaining splits as settled`,
+          );
+          await this.expenseRepository.markAllPoolSplitsSettled(settlement.poolId);
+        }
+
         const pool = await this.poolRepository.findById(settlement.poolId);
         if (pool) {
           this.webhookDispatcher.dispatch(pool.groupId, 'settlement.confirmed', {

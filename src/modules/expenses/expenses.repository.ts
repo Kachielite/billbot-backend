@@ -84,6 +84,7 @@ export interface IExpenseRepository {
   getPoolStats(
     poolId: string,
   ): Promise<{ total_amount: number; amount_collected: number; outstanding: number }>;
+  markAllPoolSplitsSettled(poolId: string): Promise<void>;
   getTotalSpendByGroup(groupId: string): Promise<number>;
 }
 
@@ -683,6 +684,22 @@ class ExpenseRepositoryImpl implements IExpenseRepository {
 
     amount_collected = Math.min(amount_collected, total_amount);
     return { total_amount, amount_collected, outstanding: total_amount - amount_collected };
+  }
+
+  async markAllPoolSplitsSettled(poolId: string): Promise<void> {
+    const now = new Date();
+    const expenseIds = await this.db.client
+      .select({ id: ExpenseSchema.id })
+      .from(ExpenseSchema)
+      .where(eq(ExpenseSchema.poolId, poolId));
+    if (expenseIds.length === 0) return;
+    const ids = expenseIds.map((e) => e.id);
+    await this.db.client
+      .update(ExpenseSplitSchema)
+      .set({ settled: true, settledAt: now })
+      .where(
+        and(inArray(ExpenseSplitSchema.expenseId, ids), eq(ExpenseSplitSchema.settled, false)),
+      );
   }
 
   async getTotalSpendByGroup(groupId: string): Promise<number> {
