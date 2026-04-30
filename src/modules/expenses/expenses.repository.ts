@@ -324,39 +324,62 @@ class ExpenseRepositoryImpl implements IExpenseRepository {
   }
 
   async getTotalOwedByUser(userId: string): Promise<number> {
-    const [unsettledRow, settledRow, confirmedSentRow] = await Promise.all([
-      this.db.client
-        .select({ total: sql<string>`COALESCE(SUM(${ExpenseSplitSchema.amount}), '0')` })
-        .from(ExpenseSplitSchema)
-        .innerJoin(ExpenseSchema, eq(ExpenseSplitSchema.expenseId, ExpenseSchema.id))
-        .where(
-          and(
-            eq(ExpenseSplitSchema.owedBy, userId),
-            eq(ExpenseSplitSchema.settled, false),
-            ne(ExpenseSchema.paidBy, userId),
+    const [unsettledRow, settledRow, confirmedSentRow, confirmedReceivedRow, settledForMeRow] =
+      await Promise.all([
+        this.db.client
+          .select({ total: sql<string>`COALESCE(SUM(${ExpenseSplitSchema.amount}), '0')` })
+          .from(ExpenseSplitSchema)
+          .innerJoin(ExpenseSchema, eq(ExpenseSplitSchema.expenseId, ExpenseSchema.id))
+          .where(
+            and(
+              eq(ExpenseSplitSchema.owedBy, userId),
+              eq(ExpenseSplitSchema.settled, false),
+              ne(ExpenseSchema.paidBy, userId),
+            ),
           ),
-        ),
-      this.db.client
-        .select({ total: sql<string>`COALESCE(SUM(${ExpenseSplitSchema.amount}), '0')` })
-        .from(ExpenseSplitSchema)
-        .innerJoin(ExpenseSchema, eq(ExpenseSplitSchema.expenseId, ExpenseSchema.id))
-        .where(
-          and(
-            eq(ExpenseSplitSchema.owedBy, userId),
-            eq(ExpenseSplitSchema.settled, true),
-            ne(ExpenseSchema.paidBy, userId),
+        this.db.client
+          .select({ total: sql<string>`COALESCE(SUM(${ExpenseSplitSchema.amount}), '0')` })
+          .from(ExpenseSplitSchema)
+          .innerJoin(ExpenseSchema, eq(ExpenseSplitSchema.expenseId, ExpenseSchema.id))
+          .where(
+            and(
+              eq(ExpenseSplitSchema.owedBy, userId),
+              eq(ExpenseSplitSchema.settled, true),
+              ne(ExpenseSchema.paidBy, userId),
+            ),
           ),
-        ),
-      this.db.client
-        .select({ total: sql<string>`COALESCE(SUM(${SettlementSchema.amount}::numeric), '0')` })
-        .from(SettlementSchema)
-        .where(and(eq(SettlementSchema.fromUser, userId), eq(SettlementSchema.status, 'settled'))),
-    ]);
+        this.db.client
+          .select({ total: sql<string>`COALESCE(SUM(${SettlementSchema.amount}::numeric), '0')` })
+          .from(SettlementSchema)
+          .where(
+            and(eq(SettlementSchema.fromUser, userId), eq(SettlementSchema.status, 'settled')),
+          ),
+        // Excess-received: settlements where this user was the payee
+        this.db.client
+          .select({ total: sql<string>`COALESCE(SUM(${SettlementSchema.amount}::numeric), '0')` })
+          .from(SettlementSchema)
+          .where(and(eq(SettlementSchema.toUser, userId), eq(SettlementSchema.status, 'settled'))),
+        // Splits on this user's expenses that were settled by others
+        this.db.client
+          .select({ total: sql<string>`COALESCE(SUM(${ExpenseSplitSchema.amount}), '0')` })
+          .from(ExpenseSplitSchema)
+          .innerJoin(ExpenseSchema, eq(ExpenseSplitSchema.expenseId, ExpenseSchema.id))
+          .where(
+            and(
+              eq(ExpenseSchema.paidBy, userId),
+              ne(ExpenseSplitSchema.owedBy, userId),
+              eq(ExpenseSplitSchema.settled, true),
+            ),
+          ),
+      ]);
     const unsettled = parseFloat(unsettledRow[0]?.total ?? '0');
     const settled = parseFloat(settledRow[0]?.total ?? '0');
     const confirmedSent = parseFloat(confirmedSentRow[0]?.total ?? '0');
+    const confirmedReceived = parseFloat(confirmedReceivedRow[0]?.total ?? '0');
+    const settledForMe = parseFloat(settledForMeRow[0]?.total ?? '0');
     const excessCredit = Math.max(0, confirmedSent - settled);
-    return Math.max(0, unsettled - excessCredit);
+    const excessReceived = Math.max(0, confirmedReceived - settledForMe);
+    return Math.max(0, unsettled - excessCredit - excessReceived);
   }
 
   async getTotalOwedToUser(userId: string): Promise<number> {
@@ -437,12 +460,13 @@ class ExpenseRepositoryImpl implements IExpenseRepository {
   ): Promise<Map<string, { totalOwed: number; totalOwedToMe: number }>> {
     if (groupIds.length === 0) return new Map();
 
-    const [splitRows, settlementRows] = await Promise.all([
+    const [splitRows, sentSettlementRows, receivedSettlementRows] = await Promise.all([
       this.db.client
         .select({
           groupId: ExpensePoolSchema.groupId,
           unsettledOwed: sql<string>`COALESCE(SUM(CASE WHEN ${ExpenseSplitSchema.owedBy} = ${userId} AND ${ExpenseSchema.paidBy} != ${userId} AND ${ExpenseSplitSchema.settled} = false THEN ${ExpenseSplitSchema.amount}::numeric ELSE 0 END), 0)`,
           settledOwed: sql<string>`COALESCE(SUM(CASE WHEN ${ExpenseSplitSchema.owedBy} = ${userId} AND ${ExpenseSchema.paidBy} != ${userId} AND ${ExpenseSplitSchema.settled} = true THEN ${ExpenseSplitSchema.amount}::numeric ELSE 0 END), 0)`,
+          settledForMe: sql<string>`COALESCE(SUM(CASE WHEN ${ExpenseSchema.paidBy} = ${userId} AND ${ExpenseSplitSchema.owedBy} != ${userId} AND ${ExpenseSplitSchema.settled} = true THEN ${ExpenseSplitSchema.amount}::numeric ELSE 0 END), 0)`,
           totalOwedToMe: sql<string>`COALESCE(SUM(CASE WHEN ${ExpenseSchema.paidBy} = ${userId} AND ${ExpenseSplitSchema.owedBy} != ${userId} AND ${ExpenseSplitSchema.settled} = false THEN ${ExpenseSplitSchema.amount}::numeric ELSE 0 END), 0)`,
         })
         .from(ExpensePoolSchema)
@@ -465,21 +489,43 @@ class ExpenseRepositoryImpl implements IExpenseRepository {
           ),
         )
         .groupBy(ExpensePoolSchema.groupId),
+      this.db.client
+        .select({
+          groupId: ExpensePoolSchema.groupId,
+          confirmedReceived: sql<string>`COALESCE(SUM(${SettlementSchema.amount}::numeric), '0')`,
+        })
+        .from(SettlementSchema)
+        .innerJoin(ExpensePoolSchema, eq(ExpensePoolSchema.id, SettlementSchema.poolId))
+        .where(
+          and(
+            inArray(ExpensePoolSchema.groupId, groupIds),
+            eq(SettlementSchema.toUser, userId),
+            eq(SettlementSchema.status, 'settled'),
+          ),
+        )
+        .groupBy(ExpensePoolSchema.groupId),
     ]);
 
     const confirmedSentMap = new Map<string, number>();
-    for (const r of settlementRows) {
+    for (const r of sentSettlementRows) {
       confirmedSentMap.set(r.groupId, parseFloat(r.confirmedSent));
+    }
+    const confirmedReceivedMap = new Map<string, number>();
+    for (const r of receivedSettlementRows) {
+      confirmedReceivedMap.set(r.groupId, parseFloat(r.confirmedReceived));
     }
 
     const map = new Map<string, { totalOwed: number; totalOwedToMe: number }>();
     for (const row of splitRows) {
       const unsettledOwed = parseFloat(row.unsettledOwed);
       const settledOwed = parseFloat(row.settledOwed);
+      const settledForMe = parseFloat(row.settledForMe);
       const confirmedSent = confirmedSentMap.get(row.groupId) ?? 0;
+      const confirmedReceived = confirmedReceivedMap.get(row.groupId) ?? 0;
       const excessCredit = Math.max(0, confirmedSent - settledOwed);
+      const excessReceived = Math.max(0, confirmedReceived - settledForMe);
       map.set(row.groupId, {
-        totalOwed: Math.max(0, unsettledOwed - excessCredit),
+        totalOwed: Math.max(0, unsettledOwed - excessCredit - excessReceived),
         totalOwedToMe: parseFloat(row.totalOwedToMe),
       });
     }
@@ -511,12 +557,13 @@ class ExpenseRepositoryImpl implements IExpenseRepository {
   ): Promise<Map<string, { totalOwed: number; totalOwedToMe: number }>> {
     if (poolIds.length === 0) return new Map();
 
-    const [splitRows, settlementRows] = await Promise.all([
+    const [splitRows, sentSettlementRows, receivedSettlementRows] = await Promise.all([
       this.db.client
         .select({
           poolId: ExpenseSchema.poolId,
           unsettledOwed: sql<string>`COALESCE(SUM(CASE WHEN ${ExpenseSplitSchema.owedBy} = ${userId} AND ${ExpenseSchema.paidBy} != ${userId} AND ${ExpenseSplitSchema.settled} = false THEN ${ExpenseSplitSchema.amount}::numeric ELSE 0 END), 0)`,
           settledOwed: sql<string>`COALESCE(SUM(CASE WHEN ${ExpenseSplitSchema.owedBy} = ${userId} AND ${ExpenseSchema.paidBy} != ${userId} AND ${ExpenseSplitSchema.settled} = true THEN ${ExpenseSplitSchema.amount}::numeric ELSE 0 END), 0)`,
+          settledForMe: sql<string>`COALESCE(SUM(CASE WHEN ${ExpenseSchema.paidBy} = ${userId} AND ${ExpenseSplitSchema.owedBy} != ${userId} AND ${ExpenseSplitSchema.settled} = true THEN ${ExpenseSplitSchema.amount}::numeric ELSE 0 END), 0)`,
           totalOwedToMe: sql<string>`COALESCE(SUM(CASE WHEN ${ExpenseSchema.paidBy} = ${userId} AND ${ExpenseSplitSchema.owedBy} != ${userId} AND ${ExpenseSplitSchema.settled} = false THEN ${ExpenseSplitSchema.amount}::numeric ELSE 0 END), 0)`,
         })
         .from(ExpenseSchema)
@@ -537,11 +584,29 @@ class ExpenseRepositoryImpl implements IExpenseRepository {
           ),
         )
         .groupBy(SettlementSchema.poolId),
+      this.db.client
+        .select({
+          poolId: SettlementSchema.poolId,
+          confirmedReceived: sql<string>`COALESCE(SUM(${SettlementSchema.amount}::numeric), '0')`,
+        })
+        .from(SettlementSchema)
+        .where(
+          and(
+            inArray(SettlementSchema.poolId, poolIds),
+            eq(SettlementSchema.toUser, userId),
+            eq(SettlementSchema.status, 'settled'),
+          ),
+        )
+        .groupBy(SettlementSchema.poolId),
     ]);
 
     const confirmedSentMap = new Map<string, number>();
-    for (const r of settlementRows) {
+    for (const r of sentSettlementRows) {
       if (r.poolId) confirmedSentMap.set(r.poolId, parseFloat(r.confirmedSent));
+    }
+    const confirmedReceivedMap = new Map<string, number>();
+    for (const r of receivedSettlementRows) {
+      if (r.poolId) confirmedReceivedMap.set(r.poolId, parseFloat(r.confirmedReceived));
     }
 
     const map = new Map<string, { totalOwed: number; totalOwedToMe: number }>();
@@ -549,10 +614,13 @@ class ExpenseRepositoryImpl implements IExpenseRepository {
       if (row.poolId) {
         const unsettledOwed = parseFloat(row.unsettledOwed);
         const settledOwed = parseFloat(row.settledOwed);
+        const settledForMe = parseFloat(row.settledForMe);
         const confirmedSent = confirmedSentMap.get(row.poolId) ?? 0;
+        const confirmedReceived = confirmedReceivedMap.get(row.poolId) ?? 0;
         const excessCredit = Math.max(0, confirmedSent - settledOwed);
+        const excessReceived = Math.max(0, confirmedReceived - settledForMe);
         map.set(row.poolId, {
-          totalOwed: Math.max(0, unsettledOwed - excessCredit),
+          totalOwed: Math.max(0, unsettledOwed - excessCredit - excessReceived),
           totalOwedToMe: parseFloat(row.totalOwedToMe),
         });
       }
