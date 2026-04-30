@@ -1,7 +1,8 @@
 import { inject, injectable } from 'tsyringe';
-import { eq, desc } from 'drizzle-orm';
+import { eq, desc, inArray } from 'drizzle-orm';
 import Database from '@/common/lib/database';
 import { SettlementSchema } from './settlements.schema';
+import { ExpensePoolSchema } from '@/modules/pools/pools.schema';
 import { ISettlement } from './settlements.interface';
 
 export interface ISettlementRepository {
@@ -17,6 +18,7 @@ export interface ISettlementRepository {
   }): Promise<ISettlement>;
   findById(id: string): Promise<ISettlement | null>;
   findByPool(poolId: string): Promise<ISettlement[]>;
+  findByGroup(groupId: string): Promise<ISettlement[]>;
   update(
     id: string,
     data: Partial<{
@@ -59,6 +61,21 @@ class SettlementRepositoryImpl implements ISettlementRepository {
       .select()
       .from(SettlementSchema)
       .where(eq(SettlementSchema.poolId, poolId))
+      .orderBy(desc(SettlementSchema.createdAt));
+    return rows as unknown as ISettlement[];
+  }
+
+  async findByGroup(groupId: string): Promise<ISettlement[]> {
+    const pools = await this.db.client
+      .select({ id: ExpensePoolSchema.id })
+      .from(ExpensePoolSchema)
+      .where(eq(ExpensePoolSchema.groupId, groupId));
+    if (pools.length === 0) return [];
+    const poolIds = pools.map((p) => p.id);
+    const rows = await this.db.client
+      .select()
+      .from(SettlementSchema)
+      .where(inArray(SettlementSchema.poolId, poolIds))
       .orderBy(desc(SettlementSchema.createdAt));
     return rows as unknown as ISettlement[];
   }
