@@ -23,7 +23,6 @@ export interface IPoolResponse {
   description: string | null;
   status: string;
   split_type: string;
-  is_default: boolean;
   created_by: string | null;
   created_at: Date;
 }
@@ -370,10 +369,6 @@ class PoolService implements IPoolService {
         throw new ResourceNotFoundException('Pool not found.');
       }
 
-      if (pool.isDefault) {
-        throw new BadRequestException('The default pool cannot be deleted.');
-      }
-
       const admin = await this.groupRepository.getMember(pool.groupId, userId);
       if (!admin || admin.role !== 'admin') {
         logger.warn(`User ${userId} is not an admin of group ${pool.groupId} — delete pool denied`);
@@ -414,7 +409,6 @@ class PoolService implements IPoolService {
       description: p.description,
       status: p.status,
       split_type: p.splitType,
-      is_default: p.isDefault,
       created_by: p.createdBy,
       created_at: p.createdAt,
     };

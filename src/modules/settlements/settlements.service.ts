@@ -239,9 +239,9 @@ class SettlementService implements ISettlementService {
         confirmedAt: new Date(),
       });
 
-      // Mark splits as settled greedily
+      // Cascade-settle splits: fromUser's splits first, then propagate credits through intermediaries
       if (settlement.poolId && settlement.fromUser && settlement.toUser) {
-        logger.info(`Marking splits as settled for settlement ${settlementId}`);
+        logger.info(`Cascade-settling splits for settlement ${settlementId}`);
         await this.markSplitsAsSettled(
           settlement.poolId,
           settlement.fromUser,
@@ -384,23 +384,78 @@ class SettlementService implements ISettlementService {
     };
   }
 
-  // Greedy split settlement: mark oldest unsettled splits first until amount is exhausted
+  // Cascade split settlement:
+  // 1. Greedily settle ALL of fromUser's unsettled splits (oldest first, partial support)
+  // 2. For each non-toUser creditor that received credit, cascade-settle their own debts
+  // 3. Cascade toUser's excess (physical payment minus directly matched splits)
   private async markSplitsAsSettled(
     poolId: string,
     fromUser: string,
     toUser: string,
     amount: number,
   ): Promise<void> {
-    const splits = await this.expenseRepository.getUnsettledSplitsOwedBy(poolId, fromUser, toUser);
+    const splits = await this.expenseRepository.getUnsettledObligationSplits(poolId, fromUser);
     let remaining = amount;
+    const creditorCredits = new Map<string, number>();
 
     for (const split of splits) {
-      if (remaining <= 0) break;
-      const splitAmount = parseFloat(split.amount);
-      if (splitAmount <= remaining) {
+      if (remaining < 0.01) break;
+      const splitRemaining = parseFloat(split.amountRemaining);
+      const toSettle = Math.min(splitRemaining, remaining);
+      if (splitRemaining - toSettle < 0.01) {
         await this.expenseRepository.markSplitSettled(split.id);
-        remaining -= splitAmount;
+      } else {
+        await this.expenseRepository.partiallySettleSplit(split.id, toSettle);
       }
+      if (split.paidBy) {
+        creditorCredits.set(split.paidBy, (creditorCredits.get(split.paidBy) ?? 0) + toSettle);
+      }
+      remaining -= toSettle;
+    }
+
+    // Cascade credits to non-toUser creditors (their debts can be settled with the received credit)
+    for (const [creditor, creditAmount] of creditorCredits) {
+      if (creditor !== toUser) {
+        await this.cascadeCredit(poolId, creditor, creditAmount);
+      }
+    }
+
+    // Cascade toUser's excess (money toUser physically received beyond what they're directly owed)
+    const toUserDirect = creditorCredits.get(toUser) ?? 0;
+    const excess = amount - toUserDirect;
+    if (excess > 0.01) {
+      await this.cascadeCredit(poolId, toUser, excess);
+    }
+  }
+
+  // Recursively settle a user's oldest debts using credit they received, propagating further credits.
+  // Terminates naturally when splits are exhausted or amount falls below the threshold.
+  private async cascadeCredit(poolId: string, userId: string, amount: number): Promise<void> {
+    if (amount < 0.01) return;
+
+    const splits = await this.expenseRepository.getUnsettledObligationSplits(poolId, userId);
+    if (splits.length === 0) return;
+
+    let remaining = amount;
+    const newCredits = new Map<string, number>();
+
+    for (const split of splits) {
+      if (remaining < 0.01) break;
+      const splitRemaining = parseFloat(split.amountRemaining);
+      const toSettle = Math.min(splitRemaining, remaining);
+      if (splitRemaining - toSettle < 0.01) {
+        await this.expenseRepository.markSplitSettled(split.id);
+      } else {
+        await this.expenseRepository.partiallySettleSplit(split.id, toSettle);
+      }
+      if (split.paidBy) {
+        newCredits.set(split.paidBy, (newCredits.get(split.paidBy) ?? 0) + toSettle);
+      }
+      remaining -= toSettle;
+    }
+
+    for (const [creditor, creditAmount] of newCredits) {
+      await this.cascadeCredit(poolId, creditor, creditAmount);
     }
   }
 }

@@ -30,6 +30,8 @@ export const ExpenseSplitSchema = pgTable('expense_splits', {
     .notNull(),
   owedBy: text('owed_by').references(() => UserSchema.id),
   amount: numeric('amount', { precision: 12, scale: 2 }).notNull(),
+  amountSettled: numeric('amount_settled', { precision: 12, scale: 2 }).default('0').notNull(),
+  amountRemaining: numeric('amount_remaining', { precision: 12, scale: 2 }).notNull(),
   settled: boolean('settled').default(false).notNull(),
   settledAt: timestamp('settled_at', { withTimezone: true }),
 });
