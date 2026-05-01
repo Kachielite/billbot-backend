@@ -215,10 +215,26 @@ class BalanceService implements IBalanceService {
   async getUserBalanceSummary(userId: string): Promise<IUserBalanceSummary> {
     logger.info(`Fetching balance summary for user ${userId}`);
     try {
-      const [totalOwed, totalOwedToMe] = await Promise.all([
-        this.expenseRepository.getTotalOwedByUser(userId),
-        this.expenseRepository.getTotalOwedToUser(userId),
+      const [owedByMe, owedToMe] = await Promise.all([
+        this.expenseRepository.getOwedByUserPerCounterparty(userId),
+        this.expenseRepository.getOwedToUserPerCounterparty(userId),
       ]);
+
+      // Net per counterparty before summing — prevents mutual debts from inflating both sides.
+      // e.g. Joel owes Rene 12,500 AND Rene owes Joel 12,500 → net 0, neither appears in summary.
+      const counterparties = new Set([...owedByMe.keys(), ...owedToMe.keys()]);
+      let totalOwed = 0;
+      let totalOwedToMe = 0;
+
+      for (const cp of counterparties) {
+        const net = (owedToMe.get(cp) ?? 0) - (owedByMe.get(cp) ?? 0);
+        if (net > 0.01) totalOwedToMe += net;
+        else if (net < -0.01) totalOwed += Math.abs(net);
+      }
+
+      totalOwed = Math.round(totalOwed * 100) / 100;
+      totalOwedToMe = Math.round(totalOwedToMe * 100) / 100;
+
       logger.info(
         `Balance summary for user ${userId}: owed=${totalOwed}, owed to me=${totalOwedToMe}`,
       );

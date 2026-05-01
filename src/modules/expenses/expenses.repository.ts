@@ -72,8 +72,8 @@ export interface IExpenseRepository {
   findAllByPool(poolId: string): Promise<IExpense[]>;
   findAllByGroup(groupId: string): Promise<IExpense[]>;
   getSplitsByGroup(groupId: string): Promise<IExpenseSplit[]>;
-  getTotalOwedByUser(userId: string): Promise<number>;
-  getTotalOwedToUser(userId: string): Promise<number>;
+  getOwedByUserPerCounterparty(userId: string): Promise<Map<string, number>>;
+  getOwedToUserPerCounterparty(userId: string): Promise<Map<string, number>>;
   getGroupBalancesForUser(
     userId: string,
     groupIds: string[],
@@ -359,22 +359,52 @@ class ExpenseRepositoryImpl implements IExpenseRepository {
     };
   }
 
-  async getTotalOwedByUser(userId: string): Promise<number> {
-    const [row] = await this.db.client
-      .select({ total: sql<string>`COALESCE(SUM(${ExpenseSplitSchema.amountRemaining}), '0')` })
+  async getOwedByUserPerCounterparty(userId: string): Promise<Map<string, number>> {
+    const rows = await this.db.client
+      .select({
+        creditor: ExpenseSchema.paidBy,
+        amount: sql<string>`COALESCE(SUM(${ExpenseSplitSchema.amountRemaining}::numeric), '0')`,
+      })
       .from(ExpenseSplitSchema)
       .innerJoin(ExpenseSchema, eq(ExpenseSplitSchema.expenseId, ExpenseSchema.id))
-      .where(and(eq(ExpenseSplitSchema.owedBy, userId), ne(ExpenseSchema.paidBy, userId)));
-    return parseFloat(row?.total ?? '0');
+      .where(
+        and(
+          eq(ExpenseSplitSchema.owedBy, userId),
+          ne(ExpenseSchema.paidBy, userId),
+          eq(ExpenseSplitSchema.settled, false),
+        ),
+      )
+      .groupBy(ExpenseSchema.paidBy);
+
+    const map = new Map<string, number>();
+    for (const row of rows) {
+      if (row.creditor) map.set(row.creditor, parseFloat(row.amount));
+    }
+    return map;
   }
 
-  async getTotalOwedToUser(userId: string): Promise<number> {
-    const [row] = await this.db.client
-      .select({ total: sql<string>`COALESCE(SUM(${ExpenseSplitSchema.amountRemaining}), '0')` })
+  async getOwedToUserPerCounterparty(userId: string): Promise<Map<string, number>> {
+    const rows = await this.db.client
+      .select({
+        debtor: ExpenseSplitSchema.owedBy,
+        amount: sql<string>`COALESCE(SUM(${ExpenseSplitSchema.amountRemaining}::numeric), '0')`,
+      })
       .from(ExpenseSplitSchema)
       .innerJoin(ExpenseSchema, eq(ExpenseSplitSchema.expenseId, ExpenseSchema.id))
-      .where(and(eq(ExpenseSchema.paidBy, userId), ne(ExpenseSplitSchema.owedBy, userId)));
-    return parseFloat(row?.total ?? '0');
+      .where(
+        and(
+          eq(ExpenseSchema.paidBy, userId),
+          ne(ExpenseSplitSchema.owedBy, userId),
+          eq(ExpenseSplitSchema.settled, false),
+        ),
+      )
+      .groupBy(ExpenseSplitSchema.owedBy);
+
+    const map = new Map<string, number>();
+    for (const row of rows) {
+      if (row.debtor) map.set(row.debtor, parseFloat(row.amount));
+    }
+    return map;
   }
 
   async findByGroup(
