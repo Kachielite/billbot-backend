@@ -60,13 +60,24 @@ class SummaryService implements ISummaryService {
   async getUserSummary(userId: string): Promise<IUserSummary> {
     logger.info(`Fetching dashboard summary for user ${userId}`);
     try {
-      const [totalOwed, totalOwedToMe, groups, upcoming, { activities }] = await Promise.all([
-        this.expenseRepository.getTotalOwedByUser(userId),
-        this.expenseRepository.getTotalOwedToUser(userId),
+      const [owedByMe, owedToMe, groups, upcoming, { activities }] = await Promise.all([
+        this.expenseRepository.getOwedByUserPerCounterparty(userId),
+        this.expenseRepository.getOwedToUserPerCounterparty(userId),
         this.groupRepository.findAllForUser(userId, 1, 0),
         this.expenseRepository.findUpcomingRecurringForUser(userId, 1, 0),
         this.activityRepository.findForUser(userId, 5, 0),
       ]);
+
+      const counterparties = new Set([...owedByMe.keys(), ...owedToMe.keys()]);
+      let totalOwed = 0;
+      let totalOwedToMe = 0;
+      for (const cp of counterparties) {
+        const net = (owedToMe.get(cp) ?? 0) - (owedByMe.get(cp) ?? 0);
+        if (net > 0.01) totalOwedToMe += net;
+        else if (net < -0.01) totalOwed += Math.abs(net);
+      }
+      totalOwed = Math.round(totalOwed * 100) / 100;
+      totalOwedToMe = Math.round(totalOwedToMe * 100) / 100;
 
       return {
         balance: {
