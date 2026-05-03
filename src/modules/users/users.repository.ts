@@ -1,8 +1,11 @@
 import { inject, injectable } from 'tsyringe';
-import { eq, inArray } from 'drizzle-orm';
+import { and, eq, ilike, inArray, ne, or } from 'drizzle-orm';
 import Database from '@/common/lib/database';
 import { UserSchema } from './users.schema';
 import { IUser, ICreateUser, IUpdateUser } from './users.interface';
+import { GroupMemberSchema } from '@/modules/groups/groups.schema';
+import { PoolMemberSchema } from '@/modules/pools/pools.schema';
+import { SettlementSchema } from '@/modules/settlements/settlements.schema';
 
 export interface IUserRepository {
   create(data: ICreateUser): Promise<IUser>;
@@ -13,6 +16,7 @@ export interface IUserRepository {
   findByGoogleId(googleId: string): Promise<IUser | null>;
   findByAppleId(appleId: string): Promise<IUser | null>;
   update(id: string, data: IUpdateUser): Promise<IUser>;
+  searchRelatedUsers(userId: string, query: string): Promise<IUser[]>;
 }
 
 @injectable()
@@ -102,6 +106,74 @@ class UserRepositoryImpl implements IUserRepository {
       .where(eq(UserSchema.id, id))
       .returning();
     return row as unknown as IUser;
+  }
+
+  async searchRelatedUsers(userId: string, query: string): Promise<IUser[]> {
+    // Collect group co-members
+    const userGroups = await this.db.client
+      .selectDistinct({ groupId: GroupMemberSchema.groupId })
+      .from(GroupMemberSchema)
+      .where(eq(GroupMemberSchema.userId, userId));
+
+    const groupIds = userGroups.map((r) => r.groupId);
+    let groupMateIds: string[] = [];
+    if (groupIds.length > 0) {
+      const rows = await this.db.client
+        .selectDistinct({ userId: GroupMemberSchema.userId })
+        .from(GroupMemberSchema)
+        .where(
+          and(inArray(GroupMemberSchema.groupId, groupIds), ne(GroupMemberSchema.userId, userId)),
+        );
+      groupMateIds = rows.map((r) => r.userId);
+    }
+
+    // Collect pool co-members
+    const userPools = await this.db.client
+      .selectDistinct({ poolId: PoolMemberSchema.poolId })
+      .from(PoolMemberSchema)
+      .where(eq(PoolMemberSchema.userId, userId));
+
+    const poolIds = userPools.map((r) => r.poolId);
+    let poolMateIds: string[] = [];
+    if (poolIds.length > 0) {
+      const rows = await this.db.client
+        .selectDistinct({ userId: PoolMemberSchema.userId })
+        .from(PoolMemberSchema)
+        .where(and(inArray(PoolMemberSchema.poolId, poolIds), ne(PoolMemberSchema.userId, userId)));
+      poolMateIds = rows.map((r) => r.userId);
+    }
+
+    // Collect settlement counterparties
+    const sent = await this.db.client
+      .selectDistinct({ userId: SettlementSchema.toUser })
+      .from(SettlementSchema)
+      .where(eq(SettlementSchema.fromUser, userId));
+
+    const received = await this.db.client
+      .selectDistinct({ userId: SettlementSchema.fromUser })
+      .from(SettlementSchema)
+      .where(eq(SettlementSchema.toUser, userId));
+
+    const settlementIds = [...sent.map((r) => r.userId), ...received.map((r) => r.userId)].filter(
+      Boolean,
+    ) as string[];
+
+    const relatedIds = [...new Set([...groupMateIds, ...poolMateIds, ...settlementIds])];
+    if (relatedIds.length === 0) return [];
+
+    const searchTerm = `%${query}%`;
+    const users = await this.db.client
+      .select()
+      .from(UserSchema)
+      .where(
+        and(
+          inArray(UserSchema.id, relatedIds),
+          or(ilike(UserSchema.name, searchTerm), ilike(UserSchema.email, searchTerm)),
+        ),
+      )
+      .limit(20);
+
+    return users as unknown as IUser[];
   }
 }
 

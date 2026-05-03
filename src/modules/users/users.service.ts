@@ -10,7 +10,7 @@ export interface IUserService {
   getMe(userId: string): Promise<UserResponseDTO>;
   updateMe(userId: string, data: UpdateUserDTO): Promise<UserResponseDTO>;
   updateAvatar(userId: string, file: Express.Multer.File): Promise<UserResponseDTO>;
-  searchByPhone(phone: string): Promise<UserResponseDTO>;
+  searchUsers(userId: string, query: string): Promise<UserResponseDTO[]>;
 }
 
 @injectable()
@@ -66,20 +66,15 @@ class UserService implements IUserService {
     }
   }
 
-  async searchByPhone(phone: string): Promise<UserResponseDTO> {
-    logger.info(`Searching user by phone: ${phone}`);
+  async searchUsers(userId: string, query: string): Promise<UserResponseDTO[]> {
+    logger.info(`User ${userId} searching related users with query: ${query}`);
     try {
-      const user = await this.userRepository.findByPhone(phone);
-      if (!user) {
-        logger.warn(`No user found with phone: ${phone}`);
-        throw new ResourceNotFoundException('No user found with that phone number.');
-      }
-      logger.info(`User found by phone: ${phone}`);
-      return this.mapToDTO(user);
+      const users = await this.userRepository.searchRelatedUsers(userId, query);
+      logger.info(`Found ${users.length} related users for query: ${query}`);
+      return users.map((u) => this.mapToDTO(u));
     } catch (error) {
-      if (error instanceof ResourceNotFoundException) throw error;
-      logger.error(`Error searching user by phone: ${error}`);
-      throw new InternalServerException('Failed to search user.');
+      logger.error(`Error searching users for ${userId}: ${error}`);
+      throw new InternalServerException('Failed to search users.');
     }
   }
 

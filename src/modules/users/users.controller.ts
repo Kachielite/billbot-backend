@@ -143,39 +143,40 @@ class UserController extends BaseController {
    * /users/search:
    *   get:
    *     tags: [Users]
-   *     summary: Search user by phone number
-   *     description: Find a registered user by their phone number (useful for inviting known users)
+   *     summary: Search related users by name or email
+   *     description: Search for users the authenticated user has interacted with (shared group, pool, or settlement) by name or email.
    *     security:
    *       - bearerAuth: []
    *     parameters:
    *       - in: query
-   *         name: phone
+   *         name: query
    *         required: true
    *         schema:
    *           type: string
-   *           example: '+2348012345678'
+   *           example: 'john'
    *     responses:
    *       '200':
-   *         description: User found
+   *         description: Matching users
    *         content:
    *           application/json:
    *             schema:
-   *               type: object
-   *               properties:
-   *                 id: { type: string }
-   *                 name: { type: string }
-   *                 email: { type: string, nullable: true }
-   *                 avatar_url: { type: string, nullable: true }
-   *                 created_at: { type: string, format: date-time }
-   *       '404':
-   *         $ref: '#/components/responses/NotFound'
+   *               type: array
+   *               items:
+   *                 type: object
+   *                 properties:
+   *                   id: { type: string }
+   *                   name: { type: string }
+   *                   email: { type: string, nullable: true }
+   *                   avatar_url: { type: string, nullable: true }
+   *                   created_at: { type: string, format: date-time }
    *       '401':
    *         $ref: '#/components/responses/Unauthorized'
    */
   @Get('/search')
-  async searchByPhone(req: Request) {
-    const phone = req.query.phone as string;
-    return this.userService.searchByPhone(phone);
+  async searchUsers(req: Request) {
+    const userId = (req as unknown as IAuthenticatedRequest).user?.id as string;
+    const query = req.query.query as string;
+    return this.userService.searchUsers(userId, query);
   }
 
   /**
