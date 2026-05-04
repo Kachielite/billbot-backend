@@ -3,6 +3,7 @@ import { container } from 'tsyringe';
 import NotificationController from './notifications.controller';
 import NotificationService from './notifications.service';
 import NotificationRepositoryImpl from './notifications.repository';
+import { ReminderScheduler } from './reminder.scheduler';
 import { ROUTER_TOKENS } from '@/common/constants/router.tokens';
 import { registerMount } from '@/common/utils/route-registry';
 
@@ -13,8 +14,13 @@ export function registerNotificationDependencies(): void {
 
   container.registerSingleton('INotificationRepository', NotificationRepositoryImpl);
   container.registerSingleton<NotificationService>(NotificationService);
+  container.registerSingleton<ReminderScheduler>(ReminderScheduler);
   container.registerSingleton<NotificationController>(NotificationController);
 
   const ctrl = container.resolve(NotificationController);
   registerMount('/notifications', ctrl.getRouter());
+}
+
+export function startReminderScheduler(): void {
+  container.resolve(ReminderScheduler).start();
 }

@@ -32,7 +32,10 @@ import {
   registerCategoryDependencies,
   seedCategories,
 } from '@/modules/categories/categories.dependencies';
-import { registerNotificationDependencies } from '@/modules/notifications/notifications.dependencies';
+import {
+  registerNotificationDependencies,
+  startReminderScheduler,
+} from '@/modules/notifications/notifications.dependencies';
 import { registerActivityDependencies } from '@/modules/activities/activities.dependencies';
 import { registerSummaryDependencies } from '@/modules/summary/summary.dependencies';
 
@@ -88,6 +91,7 @@ export async function configureContainer(): Promise<void> {
 
   // Start background schedulers (after all deps are registered)
   startRecurringExpenseScheduler();
+  startReminderScheduler();
 
   // App
   container.registerSingleton(App);

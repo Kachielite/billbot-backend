@@ -1,9 +1,10 @@
 import { inject, injectable } from 'tsyringe';
-import { and, desc, eq, sql } from 'drizzle-orm';
+import { and, desc, eq, isNull, or, sql } from 'drizzle-orm';
 import Database from '@/common/lib/database';
 import { NotificationSchema } from './notifications.schema';
 import { DeviceTokenSchema } from './device-tokens.schema';
 import { NotificationPreferencesSchema } from './notification-preferences.schema';
+import { ReminderLogSchema } from './reminder-logs.schema';
 import {
   INotification,
   ICreateNotification,
@@ -30,6 +31,10 @@ export interface INotificationRepository {
     userId: string,
     data: IUpdateNotificationPreferences,
   ): Promise<INotificationPreferences>;
+  // Reminders
+  findUsersEligibleForReminders(): Promise<{ userId: string; playerIds: string[] }[]>;
+  hasReminderBeenSent(periodKey: string): Promise<boolean>;
+  markReminderSent(periodKey: string): Promise<void>;
 }
 
 @injectable()
@@ -181,6 +186,46 @@ class NotificationRepositoryImpl implements INotificationRepository {
       })
       .returning();
     return this.mapPreferences(row);
+  }
+
+  async findUsersEligibleForReminders(): Promise<{ userId: string; playerIds: string[] }[]> {
+    const rows = await this.db.client
+      .select({
+        userId: DeviceTokenSchema.userId,
+        playerId: DeviceTokenSchema.playerId,
+      })
+      .from(DeviceTokenSchema)
+      .leftJoin(
+        NotificationPreferencesSchema,
+        eq(NotificationPreferencesSchema.userId, DeviceTokenSchema.userId),
+      )
+      .where(
+        or(
+          isNull(NotificationPreferencesSchema.userId),
+          eq(NotificationPreferencesSchema.general, true),
+        ),
+      );
+
+    const map = new Map<string, string[]>();
+    for (const row of rows) {
+      const list = map.get(row.userId) ?? [];
+      list.push(row.playerId);
+      map.set(row.userId, list);
+    }
+    return Array.from(map.entries()).map(([userId, playerIds]) => ({ userId, playerIds }));
+  }
+
+  async hasReminderBeenSent(periodKey: string): Promise<boolean> {
+    const [row] = await this.db.client
+      .select()
+      .from(ReminderLogSchema)
+      .where(eq(ReminderLogSchema.periodKey, periodKey))
+      .limit(1);
+    return !!row;
+  }
+
+  async markReminderSent(periodKey: string): Promise<void> {
+    await this.db.client.insert(ReminderLogSchema).values({ periodKey }).onConflictDoNothing();
   }
 
   private mapPreferences(row: {
