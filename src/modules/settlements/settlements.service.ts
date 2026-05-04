@@ -145,6 +145,7 @@ class SettlementService implements ISettlementService {
             action: 'confirm_settlement',
             settlement_id: settlement.id,
             pool_id: poolId,
+            group_id: pool.groupId,
             from_user: fromUserId,
             amount: data.amount.toString(),
           },
@@ -261,6 +262,23 @@ class SettlementService implements ISettlementService {
           currency: settlement.currency,
           from_user_id: settlement.fromUser,
         });
+
+        // Notify the payer their payment was accepted
+        this.notificationService
+          .notify(
+            settlement.fromUser,
+            'settlement.confirmed',
+            'Your payment was confirmed',
+            `Your payment of ${getCurrencySymbol(settlement.currency)}${settlement.amount} has been confirmed.`,
+            {
+              action: 'view_settlement',
+              settlement_id: settlementId,
+              pool_id: settlement.poolId,
+              group_id: pool?.groupId ?? null,
+              amount: settlement.amount,
+            },
+          )
+          .catch(() => {});
       }
 
       // Auto-mark the payee's settlement.submitted notification as read
@@ -316,9 +334,11 @@ class SettlementService implements ISettlementService {
         disputedReason: data.reason,
       });
 
+      let disputeGroupId: string | null = null;
       if (settlement.poolId) {
         const pool = await this.poolRepository.findById(settlement.poolId);
         if (pool) {
+          disputeGroupId = pool.groupId;
           this.webhookDispatcher.dispatch(pool.groupId, 'settlement.disputed', {
             settlement_id: settlementId,
             reason: data.reason,
@@ -347,6 +367,7 @@ class SettlementService implements ISettlementService {
               action: 'view_dispute',
               settlement_id: settlementId,
               pool_id: settlement.poolId,
+              group_id: disputeGroupId,
               reason: data.reason,
             },
           )

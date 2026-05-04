@@ -10,6 +10,9 @@ import { ICategoryRepository } from '@/modules/categories/categories.repository'
 import { IUserRepository } from '@/modules/users/users.repository';
 import { WebhookDispatcher } from '@/modules/webhooks/webhooks.dispatcher';
 import { IActivityRepository } from '@/modules/activities/activities.repository';
+import NotificationService, {
+  INotificationService,
+} from '@/modules/notifications/notifications.service';
 import { uploadFile } from '@/common/lib/storage';
 import { parseReceipt } from '@/common/lib/ai-parser';
 import {
@@ -68,6 +71,7 @@ class ExpenseService implements IExpenseService {
     @inject('IUserRepository') private userRepository: IUserRepository,
     @inject(WebhookDispatcher) private webhookDispatcher: WebhookDispatcher,
     @inject('IActivityRepository') private activityRepository: IActivityRepository,
+    @inject(NotificationService) private notificationService: INotificationService,
   ) {}
 
   async createExpense(
@@ -195,6 +199,30 @@ class ExpenseService implements IExpenseService {
         description: data.description ?? null,
         category: category ? { id: category.id, name: category.name, emoji: category.emoji } : null,
       });
+
+      // Notify all pool members except the creator
+      const payer = await this.userRepository.findById(userId);
+      const payerName = payer?.name ?? 'Someone';
+      const currencySymbol = getCurrencySymbol(data.currency);
+      for (const m of members) {
+        if (m.userId === userId) continue;
+        this.notificationService
+          .notify(
+            m.userId,
+            'expense.created',
+            `New expense in ${pool.name}`,
+            `${payerName} added a ${currencySymbol}${data.amount} expense${data.description ? `: ${data.description}` : ''}.`,
+            {
+              expense_id: expense.id,
+              pool_id: poolId,
+              group_id: pool.groupId,
+              amount: data.amount.toString(),
+              currency: data.currency,
+              description: data.description ?? null,
+            },
+          )
+          .catch(() => {});
+      }
 
       logger.info(`Expense ${expense.id} created successfully in pool ${poolId}`);
       return this.mapToDTO(expense, category?.emoji ?? null);

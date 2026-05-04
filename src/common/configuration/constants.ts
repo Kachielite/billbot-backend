@@ -18,6 +18,9 @@ export const CONSTANTS = {
   // Email (Google SMTP — requires a Gmail App Password)
   SMTP_USER: process.env.SMTP_USER || '',
   SMTP_PASS: process.env.SMTP_PASS || '',
+  // OneSignal push notifications
+  ONESIGNAL_APP_ID: process.env.ONESIGNAL_APP_ID || '',
+  ONESIGNAL_REST_API_KEY: process.env.ONESIGNAL_REST_API_KEY || '',
 };
 
 /**
