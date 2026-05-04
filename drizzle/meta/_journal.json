@@ -71,6 +71,20 @@
       "when": 1746057600000,
       "tag": "0009_add_split_partial_settlement",
       "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1746316800000,
+      "tag": "0010_add_push_notifications",
+      "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "7",
+      "when": 1746320400000,
+      "tag": "0011_add_reminder_logs",
+      "breakpoints": true
     }
   ]
 }
